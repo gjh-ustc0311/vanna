@@ -110,6 +110,12 @@ async def test_agent_runs_schema_then_sql_sequentially_and_preserves_tool_roundt
         getattr(component.rich_component, "content", "") == "支付金额为 12.50。"
         for component in components
     )
+    final_answer = next(
+        component.rich_component
+        for component in components
+        if getattr(component.rich_component, "content", "") == "支付金额为 12.50。"
+    )
+    assert final_answer.markdown is True
 
 
 @pytest.mark.asyncio
@@ -180,3 +186,5 @@ async def test_starter_and_help_are_handled_without_calling_the_model(schema_evi
     assert llm.requests == []
     assert "XPD 三表只读数据助手" in starter[0].rich_component.content
     assert "XPD 三表只读数据助手" in help_components[0].rich_component.content
+    assert starter[0].rich_component.markdown is False
+    assert help_components[0].rich_component.markdown is False

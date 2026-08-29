@@ -48,9 +48,12 @@
 
 - 新增 XPD 专用 FastAPI app；仅暴露首页、健康检查、SSE、Poll 和本地静态资源。
 - 请求采用 `extra=forbid`，错误采用稳定 envelope；关闭 docs/schema/CORS/Cookie。
-- 前端仅用原生 JS/CSS，使用 `textContent`，SSE 解析支持分块 UTF-8 和尾帧 flush。
+- 文本组件使用兼容的 `type=text,data.markdown` 标记；仅模型最终回答启用 Markdown，其他消息保持纯文本。
+- 前端使用零依赖安全 Markdown 节点树和原生 DOM API，不使用 `innerHTML`；SSE 解析支持分块 UTF-8 和尾帧 flush。
 - 传输在发送前选择，不实现 SSE 到 Poll 的失败回退。
 - CLI 强制显式 profile、回环 host 和单一端口；IPv6 地址以方括号展示。
+- 聊天请求及客户端响应使用 `uvicorn.error.xpd` 输出 INFO 级单行 JSON；SSE 逐帧记录，Poll 记录最终 envelope，非聊天路由不记录业务日志。
+- 日志按明确需求保留完整用户输入和结果行；只继续屏蔽 profile 密钥及未进入客户端响应的底层异常。
 
 ### 3.4 删除与依赖
 
@@ -67,10 +70,11 @@
 | Guard | SELECT/CTE/获批 JOIN、跨库/写入/星号/危险函数/歧义/关系绕过拒绝 |
 | Runner | 只在连接前重试、查询不重放、超时脱敏、LIMIT 101、100 行返回 |
 | Tool | 每回合 Search 门禁、快照身份、模型 20 行、UI 100 行、无导出 |
-| Agent | assistant tool_call/tool result roundtrip、顺序执行、跨回合 marker 失效 |
+| Agent | assistant tool_call/tool result roundtrip、最终回答 Markdown 标记、顺序执行、跨回合 marker 失效 |
 | Model | temperature 0、禁止并行调用、工具消息序列化、provider 异常脱敏 |
 | HTTP | 路由白名单、SSE/Poll、ID 传递、稳定错误、安全头、无 auth/CORS |
-| 前端 | 本地资源、安全 DOM、无下载、发送前选传输、无 SSE 重放 |
+| 日志 | 完整请求、Poll envelope、SSE chunk/error/DONE、无效请求、异常脱敏、非聊天路由静默 |
+| 前端 | Markdown 子集、HTML/危险链接降级、安全 DOM、本地资源、无下载、发送前选传输、无 SSE 重放 |
 | CLI/API | 仅三个业务参数、非回环拒绝、预检先于建服、根包仅两个导出 |
 
 ## 5. 验证命令
@@ -78,6 +82,7 @@
 ```bash
 uv sync --extra dev
 uv run pytest -q
+node --test tests/integrations/xpd/xpd-markdown.test.mjs
 uv run ruff format --check src/vanna tests/integrations/xpd
 uv run ruff check src/vanna tests/integrations/xpd
 uv run mypy src/vanna
@@ -85,7 +90,7 @@ uv build
 git diff --check
 ```
 
-CI 在 Python 3.12 上执行同等测试、格式、lint、类型和源码构建，不需要任何真实密钥。
+CI 在 Python 3.12 和 Node 22 上执行同等测试、格式、lint、类型和源码构建。Node 测试只使用内置测试器和伪 DOM，不安装 npm 包；所有检查都不需要真实密钥。
 
 ## 6. 部署前 smoke test
 
@@ -97,7 +102,8 @@ CI 在 Python 3.12 上执行同等测试、格式、lint、类型和源码构建
 4. 验证 101 行以上结果只显示 100 行并标记截断。
 5. 提交未知表、`SELECT *`、写语句和错误 JOIN，确认稳定拒绝。
 6. 人工中断一次 SSE，确认浏览器不通过 Poll 重放。
-7. 检查工作目录没有查询结果文件，响应和日志没有 profile、密钥、原始数据库异常或完整 SQL。
+7. 确认 INFO 控制台日志完整包含聊天请求及客户端响应，并检查其中没有 profile、密钥或未返回给客户端的原始模型/数据库异常。
+8. 如控制台被重定向，确认日志文件或平台的访问权限和保留周期符合完整业务数据的保护要求。
 
 此 smoke test 需要真实数据库和模型凭据，不能由无外部访问的单元测试替代。
 

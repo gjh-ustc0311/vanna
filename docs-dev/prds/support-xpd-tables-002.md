@@ -73,9 +73,14 @@
 - HTTP 业务路由只有 `/`、`/health`、`/api/vanna/v2/chat_sse`、`/api/vanna/v2/chat_poll`；另挂载 `/static` 固定本地资源。
 - 禁用 OpenAPI、Swagger、Redoc、WebSocket、登录和登出路由。
 - 页面不依赖 CDN、npm 包或运行时远程资源，不使用 `innerHTML` 渲染模型/数据库内容。
+- 文本组件保留 `type=text`，并通过 `data.markdown=true` 标记模型最终回答；其他文本默认保持纯文本。
+- Markdown 仅支持标题、段落、粗斜体、列表、引用、行内/围栏代码和 HTTP(S) 链接；HTML、图片及其他扩展语法按文本显示。
 - 浏览器在请求发送前选择 SSE 或 Poll。SSE 已经发出后，即使中断，也不允许自动用 Poll 重放。
 - 请求拒绝未知字段，消息最大 20,000 字符，客户端 ID 只接受 1–128 位字母、数字、下划线和连字符。
 - 响应添加严格 CSP、`nosniff` 和 `no-referrer`，不设置 Cookie 或 CORS 响应头。
+- 仅 SSE/Poll 聊天接口记录 INFO 级单行 JSON 日志；首页、健康检查和静态资源不产生业务日志。
+- 有效及无效请求均记录完整请求 body；SSE 按发送顺序记录每个 chunk、错误和 `[DONE]`，Poll 记录最终完整 envelope。
+- 日志完整保留用户问题、客户端文本和最多 100 行数据库结果，不进行脱敏、截断或采样；不主动记录 profile、密钥、内部 LLM/tool 消息或未进入客户端响应的底层异常。
 
 ## 6. 交付与兼容性
 
@@ -102,7 +107,8 @@
 - SQL Guard 的通过/拒绝矩阵、连接重试、超时不重放、100/20 行限制均有自动化测试。
 - 连续两个用户回合中，第二回合不能复用第一回合 Schema marker。
 - SSE 与 Poll 都返回相同组件结构；SSE 单次请求只执行一次 Agent 链路。
-- 页面无远程资产、认证和导出入口，响应无 Cookie/CORS，非合同路由返回 404。
-- Python 3.12 CI 执行测试、格式、lint、严格类型检查和源码构建。
+- 聊天请求和所有实际客户端响应均按传输边界完整记录；非聊天路由不产生 XPD 业务日志，底层秘密异常仍保持脱敏。
+- 页面无远程资产、认证和导出入口，Markdown 不执行 HTML 或危险链接，响应无 Cookie/CORS，非合同路由返回 404。
+- Python 3.12 与 Node 22 CI 执行后端/前端测试、格式、lint、严格类型检查和源码构建。
 
 真实 MySQL 与真实模型联调依赖外部网络和凭据，应作为部署前 smoke test 单独执行；合成测试通过不等同于真实环境已经联调。

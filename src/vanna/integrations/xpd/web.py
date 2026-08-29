@@ -19,10 +19,14 @@ from vanna.core import Agent, RequestContext
 
 from .errors import XpdError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error.xpd")
 
 _STATIC_DIR = Path(__file__).with_name("static")
 _ID_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
+_CHAT_TRANSPORTS = {
+    "/api/vanna/v2/chat_sse": "sse",
+    "/api/vanna/v2/chat_poll": "poll",
+}
 
 INDEX_HTML = """<!doctype html>
 <html lang="zh-CN">
@@ -104,6 +108,76 @@ def _error_payload(
     }
 
 
+def _log_chat_event(
+    *,
+    event: str,
+    transport: str,
+    path: str,
+    conversation_id: str,
+    request_id: str,
+    message_type: str,
+    payload: Any,
+) -> None:
+    """Write one complete client-boundary event as single-line JSON."""
+
+    logger.info(
+        json.dumps(
+            {
+                "event": event,
+                "timestamp": time.time(),
+                "transport": transport,
+                "path": path,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "message_type": message_type,
+                "payload": payload,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=str,
+        )
+    )
+
+
+def _log_chat_request(
+    chat_request: XpdChatRequest,
+    *,
+    transport: str,
+    path: str,
+    conversation_id: str,
+    request_id: str,
+) -> None:
+    _log_chat_event(
+        event="xpd.chat.request",
+        transport=transport,
+        path=path,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        message_type="request",
+        payload=chat_request.model_dump(mode="json", exclude_unset=True),
+    )
+
+
+def _log_chat_response(
+    payload: Any,
+    *,
+    transport: str,
+    path: str,
+    conversation_id: str,
+    request_id: str,
+    message_type: str,
+) -> None:
+    _log_chat_event(
+        event="xpd.chat.response",
+        transport=transport,
+        path=path,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        message_type=message_type,
+        payload=payload,
+    )
+
+
 def create_xpd_app(agent: Agent) -> FastAPI:
     app = FastAPI(
         title="XPD Data Assistant",
@@ -129,11 +203,31 @@ def create_xpd_app(agent: Agent) -> FastAPI:
     async def invalid_request(
         request: Request, error: RequestValidationError
     ) -> JSONResponse:
+        payload = _error_payload(
+            "xpd_request_invalid", "The request is invalid.", "", ""
+        )
+        transport = _CHAT_TRANSPORTS.get(request.url.path)
+        if transport is not None:
+            _log_chat_event(
+                event="xpd.chat.request",
+                transport=transport,
+                path=request.url.path,
+                conversation_id="",
+                request_id="",
+                message_type="request",
+                payload=error.body,
+            )
+            _log_chat_response(
+                payload,
+                transport=transport,
+                path=request.url.path,
+                conversation_id="",
+                request_id="",
+                message_type="error",
+            )
         return JSONResponse(
             status_code=400,
-            content=_error_payload(
-                "xpd_request_invalid", "The request is invalid.", "", ""
-            ),
+            content=payload,
         )
 
     @app.get("/", response_class=HTMLResponse)
@@ -167,15 +261,47 @@ def create_xpd_app(agent: Agent) -> FastAPI:
     @app.post("/api/vanna/v2/chat_sse")
     async def chat_sse(chat_request: XpdChatRequest) -> StreamingResponse:
         conversation_id, request_id = _ids(chat_request)
+        path = "/api/vanna/v2/chat_sse"
+        _log_chat_request(
+            chat_request,
+            transport="sse",
+            path=path,
+            conversation_id=conversation_id,
+            request_id=request_id,
+        )
 
         async def generate() -> AsyncGenerator[str, None]:
             try:
                 async for item in run_chat(chat_request, conversation_id, request_id):
+                    _log_chat_response(
+                        item.model_dump(mode="json"),
+                        transport="sse",
+                        path=path,
+                        conversation_id=conversation_id,
+                        request_id=request_id,
+                        message_type="chunk",
+                    )
                     yield f"data: {item.model_dump_json()}\n\n"
+                _log_chat_response(
+                    "[DONE]",
+                    transport="sse",
+                    path=path,
+                    conversation_id=conversation_id,
+                    request_id=request_id,
+                    message_type="done",
+                )
                 yield "data: [DONE]\n\n"
             except XpdError as exc:
                 payload = _error_payload(
                     exc.code, str(exc), conversation_id, request_id
+                )
+                _log_chat_response(
+                    payload,
+                    transport="sse",
+                    path=path,
+                    conversation_id=conversation_id,
+                    request_id=request_id,
+                    message_type="error",
                 )
                 yield "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
             except Exception:
@@ -185,6 +311,14 @@ def create_xpd_app(agent: Agent) -> FastAPI:
                     "The XPD request could not be completed.",
                     conversation_id,
                     request_id,
+                )
+                _log_chat_response(
+                    payload,
+                    transport="sse",
+                    path=path,
+                    conversation_id=conversation_id,
+                    request_id=request_id,
+                    message_type="error",
                 )
                 yield "data: " + json.dumps(payload) + "\n\n"
 
@@ -200,32 +334,61 @@ def create_xpd_app(agent: Agent) -> FastAPI:
     @app.post("/api/vanna/v2/chat_poll")
     async def chat_poll(chat_request: XpdChatRequest) -> Any:
         conversation_id, request_id = _ids(chat_request)
+        path = "/api/vanna/v2/chat_poll"
+        _log_chat_request(
+            chat_request,
+            transport="poll",
+            path=path,
+            conversation_id=conversation_id,
+            request_id=request_id,
+        )
         try:
             chunks = [
                 item
                 async for item in run_chat(chat_request, conversation_id, request_id)
             ]
-            return XpdChatResponse(
+            response = XpdChatResponse(
                 chunks=chunks,
                 conversation_id=conversation_id,
                 request_id=request_id,
                 total_chunks=len(chunks),
             )
-        except XpdError as exc:
-            return JSONResponse(
-                status_code=503,
-                content=_error_payload(exc.code, str(exc), conversation_id, request_id),
+            _log_chat_response(
+                response.model_dump(mode="json"),
+                transport="poll",
+                path=path,
+                conversation_id=conversation_id,
+                request_id=request_id,
+                message_type="response",
             )
+            return response
+        except XpdError as exc:
+            payload = _error_payload(exc.code, str(exc), conversation_id, request_id)
+            _log_chat_response(
+                payload,
+                transport="poll",
+                path=path,
+                conversation_id=conversation_id,
+                request_id=request_id,
+                message_type="error",
+            )
+            return JSONResponse(status_code=503, content=payload)
         except Exception:
             logger.error("Unexpected XPD chat failure")
-            return JSONResponse(
-                status_code=500,
-                content=_error_payload(
-                    "xpd_internal_error",
-                    "The XPD request could not be completed.",
-                    conversation_id,
-                    request_id,
-                ),
+            payload = _error_payload(
+                "xpd_internal_error",
+                "The XPD request could not be completed.",
+                conversation_id,
+                request_id,
             )
+            _log_chat_response(
+                payload,
+                transport="poll",
+                path=path,
+                conversation_id=conversation_id,
+                request_id=request_id,
+                message_type="error",
+            )
+            return JSONResponse(status_code=500, content=payload)
 
     return app

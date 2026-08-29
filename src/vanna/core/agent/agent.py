@@ -127,7 +127,7 @@ class Agent:
             conversation.add_message(Message(role="assistant", content=content))
             await self.conversation_store.update_conversation(conversation)
             yield UiComponent(
-                rich_component=RichTextComponent(content=content),
+                rich_component=RichTextComponent(content=content, markdown=True),
                 simple_component=SimpleTextComponent(text=content),
             )
             yield self._status("idle", "查询完成")

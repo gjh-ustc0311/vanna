@@ -85,6 +85,14 @@ HTTP 仅包含：
 
 不提供 WebSocket、OpenAPI/Swagger、登录、登出或导出路由。浏览器会在发出请求前选择 SSE 或 Poll；已发出的 SSE 请求不会回退重放为 Poll。
 
+模型最终回答使用 Markdown 展示，支持标题、段落、粗斜体、列表、引用、行内/围栏代码和 HTTP(S) 链接。渲染器随 Python 包本地交付，只通过安全 DOM API 创建固定元素；不执行 HTML、不加载图片，也不使用 `innerHTML` 或运行时前端依赖。欢迎、帮助、工具提示、错误和用户输入仍按纯文本展示。
+
+## 日志
+
+SSE 和 Poll 聊天接口会在 INFO 级别向 Uvicorn 控制台输出单行 JSON 日志：请求记录一次；SSE 逐帧记录组件、错误和 `[DONE]`；Poll 记录最终完整响应。日志包含用户问题、客户端文本和最多 100 行数据库结果，不做脱敏、截断或采样。
+
+程序不创建日志文件。若将控制台重定向到文件或日志平台，操作者必须自行限制访问权限、保留周期和备份范围。profile 密钥以及未进入客户端响应的模型/数据库原始异常仍不会写入日志。
+
 根包只承诺两个 Python API：
 
 ```python
@@ -98,11 +106,14 @@ agent = create_xpd_agent(settings)
 
 ```bash
 uv run pytest -q
+node --test tests/integrations/xpd/xpd-markdown.test.mjs
 uv run ruff format --check src/vanna tests/integrations/xpd
 uv run ruff check src/vanna tests/integrations/xpd
 uv run mypy src/vanna
 uv build
 ```
+
+Node 22 只用于执行零依赖前端单元测试，不是应用运行依赖。
 
 详细需求、架构和实施记录见：
 

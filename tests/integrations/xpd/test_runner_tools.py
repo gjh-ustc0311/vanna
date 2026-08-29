@@ -148,6 +148,7 @@ async def test_tools_require_same_turn_schema_and_limit_llm_rows(
     )
 
     assert search.success is True
+    assert search.ui_component.rich_component.markdown is False
     llm_result = json.loads(result.result_for_llm)
     assert len(llm_result["rows"]) == 20
     assert not hasattr(result.ui_component.rich_component, "exportable")

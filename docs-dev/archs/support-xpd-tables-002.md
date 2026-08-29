@@ -92,7 +92,7 @@ sequenceDiagram
     DB-->>R: 最多 101 行
     R-->>U: 表格最多 100 行
     R-->>M: 工具结果最多 20 行
-    M-->>U: 纯文本结论
+    M-->>U: 带 markdown=true 的文本结论
 ```
 
 同一回合的工具调用严格顺序执行，因为并行工具调用在模型 payload 中关闭。下一条用户消息一定创建新 Context，所以历史中的 Schema 文本不能满足门禁。
@@ -131,7 +131,13 @@ Decimal 转字符串，日期时间转 ISO 8601，二进制转 `base64:` 文本�
 }
 ```
 
-SSE 的每个 frame 是 `data: <XpdChatChunk>`，成功结束为 `data: [DONE]`。Poll 返回 `chunks` 数组以及统一的 conversation/request ID。Chunk 同时包含 rich 和可选 simple 表示；前端只用安全 DOM API 和 `textContent`。
+SSE 的每个 frame 是 `data: <XpdChatChunk>`，成功结束为 `data: [DONE]`。Poll 返回 `chunks` 数组以及统一的 conversation/request ID。Chunk 同时包含 rich 和可选 simple 表示。文本组件继续使用 `type=text`，模型最终回答增加 `data.markdown=true`；字段缺失或不为布尔值 `true` 时仍按纯文本处理，simple 表示保留原始文本。
+
+前端 Markdown 模块无第三方运行依赖，解析为受限节点树后只用 `createElement`、`createTextNode` 和 `DocumentFragment` 构建固定 DOM。支持标题、段落、粗斜体、列表、引用、行内/围栏代码和链接；HTML、图片、表格、任务列表、删除线及畸形标记按文本展示。链接相对页面地址解析后只允许 HTTP/HTTPS，拒绝带凭据 URL，并统一使用新标签页和 `noopener noreferrer`。渲染链路不使用 `innerHTML`。
+
+客户端边界使用 `uvicorn.error.xpd` logger 输出 INFO 级单行 JSON。日志字段固定为 `event/timestamp/transport/path/conversation_id/request_id/message_type/payload`。有效请求在 ID 解析后记录，校验失败请求记录异常携带的原始 body；SSE 在每次 `yield` 前记录语义等价 payload，Poll 在 `return` 前记录最终完整 envelope。日志表示“服务已发出/返回”，不表示客户端已确认接收。
+
+该日志策略经需求明确选择完整正文：用户问题、客户端文本和表格结果行均原样进入控制台。应用不安装文件 handler 或轮转策略，控制台重定向后的访问控制和留存由操作者负责。首页、健康检查和静态资源只保留 Uvicorn 自身 access log，不产生 XPD 业务日志。
 
 浏览器在 dispatch 前根据 `ReadableStream`/`TextDecoder` 能力确定传输。SSE 中断不会触发 Poll，因此数据库副作用虽然已被只读化，也不会发生重复查询和重复计费。
 
@@ -155,7 +161,7 @@ FastAPI 禁用 schema/docs 路由，不安装 CORS 中间件，不读写 Cookie�
 | `xpd_request_invalid` | HTTP payload 不合法 |
 | `xpd_internal_error` | HTTP 层未预期失败 |
 
-未知异常的 HTTP 响应固定为通用消息，日志不拼接 exception 文本、SQL、profile、密钥或结果。
+未知异常的 HTTP 响应固定为通用消息，业务日志记录这份稳定客户端 payload，不拼接底层 exception 文本、profile 或密钥。SQL、文本或结果只在它们已经属于客户端 payload 时随完整响应记录。
 
 ## 9. 状态、并发与部署
 

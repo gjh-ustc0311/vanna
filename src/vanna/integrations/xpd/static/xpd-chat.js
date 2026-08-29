@@ -1,3 +1,5 @@
+import { renderMarkdown } from "./xpd-markdown.mjs";
+
 const messages = document.querySelector("#messages");
 const status = document.querySelector("#status");
 const form = document.querySelector("#chat-form");
@@ -12,10 +14,16 @@ const randomId = (prefix) => {
 const conversationId = randomId("conv");
 const supportsStreaming = typeof ReadableStream !== "undefined" && typeof TextDecoder !== "undefined";
 
-function appendBubble(text, role = "assistant") {
+function appendBubble(text, role = "assistant", markdown = false) {
   const bubble = document.createElement("div");
   bubble.className = `bubble ${role}`;
-  bubble.textContent = String(text ?? "");
+  const content = String(text ?? "");
+  if (role === "assistant" && markdown === true) {
+    bubble.classList.add("markdown");
+    bubble.append(renderMarkdown(document, content, document.baseURI));
+  } else {
+    bubble.textContent = content;
+  }
   messages.append(bubble);
   bubble.scrollIntoView({ behavior: "smooth", block: "end" });
 }
@@ -80,7 +88,7 @@ function renderChunk(chunk) {
 
   switch (rich.type) {
     case "text":
-      appendBubble(data.content ?? "");
+      appendBubble(data.content ?? "", "assistant", data.markdown === true);
       break;
     case "dataframe":
       appendTable(data);
