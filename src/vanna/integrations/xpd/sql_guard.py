@@ -44,10 +44,8 @@ class XpdSqlGuard:
             import sqlglot
             from sqlglot import exp
             from sqlglot.optimizer.scope import traverse_scope
-        except ImportError as exc:  # pragma: no cover - optional dependency surface
-            raise XpdSqlRejected(
-                "Install the 'xpd' extra to enable SQL validation."
-            ) from exc
+        except ImportError as exc:  # pragma: no cover - dependency installation fault
+            raise XpdSqlRejected("sqlglot is required for SQL validation.") from exc
 
         if not isinstance(sql, str) or not sql.strip():
             raise XpdSqlRejected("A non-empty SQL string is required.")
@@ -106,9 +104,7 @@ class XpdSqlGuard:
         }
         for node in root.walk():
             if type(node).__name__ in forbidden_class_names:
-                raise XpdSqlRejected(
-                    f"Forbidden SQL construct: {type(node).__name__}."
-                )
+                raise XpdSqlRejected(f"Forbidden SQL construct: {type(node).__name__}.")
 
         for star in root.find_all(exp.Star):
             if not isinstance(star.parent, exp.Count):
@@ -198,7 +194,11 @@ class XpdSqlGuard:
             table = self.evidence.tables.get(source.name)
             return table.column_names if table else set()
         if isinstance(source, Scope):
-            return {str(name) for name in source.expression.named_selects if name}
+            return {
+                str(name)
+                for name in getattr(source.expression, "named_selects", [])
+                if name
+            }
         return set()
 
     @staticmethod
@@ -259,9 +259,10 @@ class XpdSqlGuard:
 
         joins = list(scope.expression.args.get("joins") or [])
         for join in joins:
-            if str(join.args.get("kind") or "").upper() == "CROSS" or join.args.get(
-                "on"
-            ) is None:
+            if (
+                str(join.args.get("kind") or "").upper() == "CROSS"
+                or join.args.get("on") is None
+            ):
                 raise XpdSqlRejected("CROSS and implicit joins are forbidden.")
 
             joined_alias = join.this.alias_or_name
@@ -336,7 +337,9 @@ class XpdSqlGuard:
                     right_column,
                 )
                 for left_column, right_column in zip(
-                    relationship.left_columns, relationship.right_columns
+                    relationship.left_columns,
+                    relationship.right_columns,
+                    strict=False,
                 )
             }
             reverse = {

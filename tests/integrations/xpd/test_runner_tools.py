@@ -5,7 +5,6 @@ import pytest
 
 from vanna.core.tool import ToolContext
 from vanna.core.user import User
-from vanna.integrations.local.agent_memory import DemoAgentMemory
 from vanna.integrations.xpd.errors import XpdQueryTimeout
 from vanna.integrations.xpd.runner import XpdReadOnlyRunner
 from vanna.integrations.xpd.sql_guard import XpdSqlGuard
@@ -61,10 +60,9 @@ class LoadedCatalog:
 @pytest.fixture
 def tool_context():
     return ToolContext(
-        user=User(id="u", group_memberships=["xpd"]),
+        user=User(id="u"),
         conversation_id="c",
         request_id="r",
-        agent_memory=DemoAgentMemory(max_items=10),
     )
 
 
@@ -87,22 +85,24 @@ async def test_runner_retries_only_connection_and_bounds_result(
     runner = XpdReadOnlyRunner(
         database_settings, XpdSqlGuard(schema_evidence), connection_factory=connect
     )
-    result = await runner.run(
-        "SELECT item_id, pay_amt FROM tb_live_goods_daily_stats"
-    )
+    result = await runner.run("SELECT item_id, pay_amt FROM tb_live_goods_daily_stats")
 
     assert attempts == 2
     assert result.row_count == 100
     assert result.truncated is True
     assert result.rows[0]["pay_amt"] == "1.20"
-    bounded = [sql for sql, _params in cursor.executed if "_vanna_xpd_bounded_result" in sql]
+    bounded = [
+        sql for sql, _params in cursor.executed if "_vanna_xpd_bounded_result" in sql
+    ]
     assert len(bounded) == 1
     assert bounded[0].endswith("LIMIT 101")
     assert connection.rolled_back is True
 
 
 @pytest.mark.asyncio
-async def test_runner_does_not_replay_a_timed_out_query(database_settings, schema_evidence):
+async def test_runner_does_not_replay_a_timed_out_query(
+    database_settings, schema_evidence
+):
     cursor = QueryCursor([], query_error=RuntimeError(3024, "raw database detail"))
     connection = QueryConnection(cursor)
     runner = XpdReadOnlyRunner(
@@ -115,7 +115,10 @@ async def test_runner_does_not_replay_a_timed_out_query(database_settings, schem
         await runner.run("SELECT item_id FROM tb_live_goods_daily_stats")
 
     assert "raw database detail" not in str(caught.value)
-    assert len([sql for sql, _ in cursor.executed if "_vanna_xpd_bounded_result" in sql]) == 1
+    assert (
+        len([sql for sql, _ in cursor.executed if "_vanna_xpd_bounded_result" in sql])
+        == 1
+    )
 
 
 @pytest.mark.asyncio
@@ -147,5 +150,27 @@ async def test_tools_require_same_turn_schema_and_limit_llm_rows(
     assert search.success is True
     llm_result = json.loads(result.result_for_llm)
     assert len(llm_result["rows"]) == 20
-    assert result.ui_component.rich_component.exportable is False
+    assert not hasattr(result.ui_component.rich_component, "exportable")
     assert len(result.ui_component.rich_component.rows) == 25
+
+
+@pytest.mark.asyncio
+async def test_schema_evidence_cannot_be_reused_from_another_snapshot(
+    database_settings, schema_evidence, tool_context
+):
+    runner = XpdReadOnlyRunner(
+        database_settings,
+        XpdSqlGuard(schema_evidence),
+        connection_factory=lambda: QueryConnection(QueryCursor([])),
+    )
+    tool_context.metadata["xpd_schema_evidence_for_request"] = (
+        schema_evidence.model_copy(deep=True)
+    )
+
+    result = await RunXpdSqlTool(runner).execute(
+        tool_context,
+        RunXpdSqlArgs(sql="SELECT item_id FROM tb_live_goods_daily_stats"),
+    )
+
+    assert result.success is False
+    assert result.metadata["error_code"] == "xpd_sql_rejected"

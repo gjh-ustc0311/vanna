@@ -50,7 +50,8 @@ class SearchXpdSchemaTool(Tool[SearchXpdSchemaArgs]):
     @property
     def description(self) -> str:
         return (
-            "Load the complete live evidence for the three approved XPD tables, "
+            "Load the complete startup-validated snapshot for the three approved "
+            "XPD tables, "
             "relationships, grains, and available metrics. Call this once in every "
             "user turn before run_xpd_sql. It takes no arguments."
         )
@@ -76,7 +77,6 @@ class SearchXpdSchemaTool(Tool[SearchXpdSchemaArgs]):
             ui_component=UiComponent(
                 rich_component=RichTextComponent(
                     content="已加载 XPD 三表 Schema 契约，可继续生成并执行只读查询。",
-                    markdown=False,
                 ),
                 simple_component=SimpleTextComponent(
                     text="XPD schema contract loaded."
@@ -117,9 +117,9 @@ class RunXpdSqlTool(Tool[RunXpdSqlArgs]):
                     "executing SQL."
                 )
             )
-        if evidence.contract_version != self.runner.guard.evidence.contract_version:
+        if evidence is not self.runner.guard.evidence:
             return _error_result(
-                XpdSqlRejected("Schema evidence does not match the active contract.")
+                XpdSqlRejected("Schema snapshot does not match the active guard.")
             )
 
         try:
@@ -144,10 +144,6 @@ class RunXpdSqlTool(Tool[RunXpdSqlArgs]):
             column_count=len(result.columns),
             title="XPD 查询结果",
             description=description,
-            max_rows_displayed=100,
-            exportable=False,
-            paginated=True,
-            page_size=25,
         )
         return ToolResult(
             success=True,
@@ -161,7 +157,6 @@ class RunXpdSqlTool(Tool[RunXpdSqlArgs]):
             metadata={
                 "row_count": result.row_count,
                 "truncated": result.truncated,
-                "exportable": False,
             },
         )
 

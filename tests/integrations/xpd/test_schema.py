@@ -24,12 +24,13 @@ class MetadataCursor:
 class MetadataConnection:
     def __init__(self, result_sets):
         self.cursor_instance = MetadataCursor(result_sets)
+        self.closed = False
 
     def cursor(self):
         return self.cursor_instance
 
     def close(self):
-        pass
+        self.closed = True
 
 
 def _metadata(include_all=True):
@@ -41,7 +42,11 @@ def _metadata(include_all=True):
     if not include_all:
         table_names.pop()
     tables = [
-        {"TABLE_NAME": name, "TABLE_TYPE": "BASE TABLE", "TABLE_COMMENT": "safe\x00 comment"}
+        {
+            "TABLE_NAME": name,
+            "TABLE_TYPE": "BASE TABLE",
+            "TABLE_COMMENT": "safe\x00 comment",
+        }
         for name in table_names
     ]
     columns = [
@@ -119,7 +124,9 @@ def _metadata(include_all=True):
     return [tables, columns, indexes, []]
 
 
-def test_catalog_requires_all_three_base_tables_and_builds_logical_join(database_settings):
+def test_catalog_requires_all_three_base_tables_and_builds_logical_join(
+    database_settings,
+):
     connection = MetadataConnection(_metadata())
     catalog = XpdSchemaCatalog(database_settings, connection_factory=lambda: connection)
 
@@ -136,7 +143,9 @@ def test_catalog_requires_all_three_base_tables_and_builds_logical_join(database
     ]
     assert evidence.relationships[0].kind == "logical"
     assert [metric.name for metric in evidence.metrics] == ["pay_amount"]
-    assert "\u202e" not in evidence.tables["tb_live_goods_daily_stats"].columns[0].comment
+    assert (
+        "\u202e" not in evidence.tables["tb_live_goods_daily_stats"].columns[0].comment
+    )
 
 
 def test_catalog_fails_preflight_when_required_table_is_missing(database_settings):
@@ -144,6 +153,46 @@ def test_catalog_fails_preflight_when_required_table_is_missing(database_setting
     catalog = XpdSchemaCatalog(database_settings, connection_factory=lambda: connection)
     with pytest.raises(XpdSchemaError, match="missing"):
         catalog.load()
+
+
+def test_catalog_fails_preflight_when_a_required_grain_field_is_missing(
+    database_settings,
+):
+    metadata = _metadata()
+    metadata[1] = [
+        row
+        for row in metadata[1]
+        if not (
+            row["TABLE_NAME"] == "tb_live_goods_daily_stats"
+            and row["COLUMN_NAME"] == "stat_date"
+        )
+    ]
+    catalog = XpdSchemaCatalog(
+        database_settings,
+        connection_factory=lambda: MetadataConnection(metadata),
+    )
+
+    with pytest.raises(XpdSchemaError, match="grain fields.*stat_date"):
+        catalog.load()
+
+
+def test_catalog_snapshot_is_loaded_once_and_reused(database_settings):
+    connection = MetadataConnection(_metadata())
+    connect_calls = 0
+
+    def connect():
+        nonlocal connect_calls
+        connect_calls += 1
+        return connection
+
+    catalog = XpdSchemaCatalog(database_settings, connection_factory=connect)
+    first = catalog.load()
+    second = catalog.load()
+
+    assert first is second
+    assert catalog.evidence is first
+    assert connect_calls == 1
+    assert connection.closed is True
 
 
 def test_schema_comment_sanitization_is_bounded_and_removes_controls():

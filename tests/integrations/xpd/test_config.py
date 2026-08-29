@@ -58,10 +58,9 @@ def test_loader_keeps_only_approved_profile_fields_and_masks_secrets(tmp_path):
 def test_loader_rejects_unsafe_urls_and_placeholders(tmp_path, replacement):
     path = tmp_path / "bad.yaml"
     lines = []
+    target_key = replacement.split(":", maxsplit=1)[0] + ":"
     for line in VALID_PROFILE.splitlines():
-        if replacement.startswith("base_url:") and line.strip().startswith("base_url:"):
-            lines.append("  " + replacement)
-        elif replacement.startswith("api_key:") and line.strip().startswith("api_key:"):
+        if line.strip().startswith(target_key):
             lines.append("  " + replacement)
         else:
             lines.append(line)
@@ -78,7 +77,9 @@ def test_loader_rejects_unsafe_urls_and_placeholders(tmp_path, replacement):
         VALID_PROFILE.replace("name: model-a", "name: &model model-a").replace(
             "username: reader", "username: *model"
         ),
-        VALID_PROFILE.replace("model:\n", "defaults: &defaults {name: x}\nmodel:\n  <<: *defaults\n"),
+        VALID_PROFILE.replace(
+            "model:\n", "defaults: &defaults {name: x}\nmodel:\n  <<: *defaults\n"
+        ),
     ],
 )
 def test_loader_rejects_duplicate_keys_anchors_aliases_and_merges(tmp_path, yaml_text):

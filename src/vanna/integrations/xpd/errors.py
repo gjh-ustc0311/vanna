@@ -1,15 +1,15 @@
-"""Stable, sanitized errors exposed by the XPD integration."""
+"""Stable, sanitized errors exposed by the XPD application."""
 
 
 class XpdError(Exception):
-    """Base class for errors that are safe to surface to a local operator."""
-
     code = "xpd_error"
     public_message = "XPD operation failed."
 
     def __init__(self, detail: str = "") -> None:
         self.detail = detail
-        message = self.public_message if not detail else f"{self.public_message} {detail}"
+        message = (
+            self.public_message if not detail else f"{self.public_message} {detail}"
+        )
         super().__init__(message)
 
 
@@ -41,3 +41,8 @@ class XpdDatabaseUnavailable(XpdError):
 class XpdQueryExecutionError(XpdError):
     code = "xpd_query_failed"
     public_message = "XPD query could not be completed."
+
+
+class XpdModelUnavailable(XpdError):
+    code = "xpd_model_unavailable"
+    public_message = "XPD model service is unavailable."

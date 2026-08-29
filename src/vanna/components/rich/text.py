@@ -1,16 +1,8 @@
-"""Rich text component."""
+"""Plain rich-text message for the bundled XPD client."""
 
-from typing import Optional
-from ...core.rich_component import RichComponent, ComponentType
+from ...core.rich_component import ComponentType, RichComponent
 
 
 class RichTextComponent(RichComponent):
-    """Rich text component with formatting options."""
-
     type: ComponentType = ComponentType.TEXT
     content: str
-    markdown: bool = False
-    code_language: Optional[str] = None  # For syntax highlighting
-    font_size: Optional[str] = None
-    font_weight: Optional[str] = None
-    text_align: Optional[str] = None

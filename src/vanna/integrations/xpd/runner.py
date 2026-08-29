@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from contextlib import suppress
 import datetime as dt
 import decimal
 import time
@@ -64,9 +65,9 @@ class XpdReadOnlyRunner:
     def _default_connection(self) -> Any:
         try:
             import pymysql
-        except ImportError as exc:  # pragma: no cover - optional dependency surface
+        except ImportError as exc:  # pragma: no cover - dependency installation fault
             raise XpdDatabaseUnavailable(
-                "Install the 'xpd' extra to enable MySQL access."
+                "PyMySQL is required for XPD MySQL access."
             ) from exc
 
         timeout_seconds = max(1, int(self.database.query_timeout_ms / 1000))
@@ -141,19 +142,13 @@ class XpdReadOnlyRunner:
                 raise XpdQueryTimeout() from exc
             raise XpdQueryExecutionError() from exc
         finally:
-            try:
+            with suppress(Exception):
                 connection.rollback()
-            except Exception:
-                pass
             if cursor is not None:
-                try:
+                with suppress(Exception):
                     cursor.close()
-                except Exception:
-                    pass
-            try:
+            with suppress(Exception):
                 connection.close()
-            except Exception:
-                pass
 
     @staticmethod
     def _database_error_code(exc: Exception) -> Optional[int]:
@@ -175,7 +170,7 @@ class XpdReadOnlyRunner:
                 rows.append(
                     {
                         column: normalize_cell(value)
-                        for column, value in zip(columns, raw_row)
+                        for column, value in zip(columns, raw_row, strict=False)
                     }
                 )
         return rows

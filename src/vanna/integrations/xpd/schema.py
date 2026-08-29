@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import defaultdict
+from contextlib import suppress
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from .config import XpdDatabaseSettings
@@ -63,10 +64,8 @@ class XpdSchemaCatalog:
     def _default_connection(self) -> Any:
         try:
             import pymysql
-        except ImportError as exc:  # pragma: no cover - optional dependency surface
-            raise XpdSchemaError(
-                "Install the 'xpd' extra to enable MySQL access."
-            ) from exc
+        except ImportError as exc:  # pragma: no cover - dependency installation fault
+            raise XpdSchemaError("PyMySQL is required for XPD MySQL access.") from exc
 
         timeout_seconds = max(1, int(self.database.query_timeout_ms / 1000))
         return pymysql.connect(
@@ -90,8 +89,10 @@ class XpdSchemaCatalog:
             return []
         return list(rows)
 
-    def load(self, force: bool = False) -> SchemaEvidence:
-        if self._evidence is not None and not force:
+    def load(self) -> SchemaEvidence:
+        """Load once; subsequent calls return the startup-frozen snapshot."""
+
+        if self._evidence is not None:
             return self._evidence
 
         placeholders = ", ".join(["%s"] * len(ALLOWED_TABLES))
@@ -155,15 +156,11 @@ class XpdSchemaCatalog:
             ) from exc
         finally:
             if cursor is not None:
-                try:
+                with suppress(Exception):
                     cursor.close()
-                except Exception:
-                    pass
             if connection is not None:
-                try:
+                with suppress(Exception):
                     connection.close()
-                except Exception:
-                    pass
 
         try:
             self._evidence = self._build_evidence(
@@ -190,8 +187,7 @@ class XpdSchemaCatalog:
             name
             for name in ALLOWED_TABLES
             if name in table_by_name
-            and str(table_by_name[name].get("TABLE_TYPE", "")).upper()
-            != "BASE TABLE"
+            and str(table_by_name[name].get("TABLE_TYPE", "")).upper() != "BASE TABLE"
         ]
         if missing or non_base:
             details = []
@@ -222,6 +218,26 @@ class XpdSchemaCatalog:
             raise XpdSchemaError(
                 "No column metadata for: " + ", ".join(empty_tables) + "."
             )
+
+        missing_grain_fields = {
+            table_name: [
+                field
+                for field in TABLE_GRAINS[table_name]
+                if field not in {column.name for column in columns_by_table[table_name]}
+            ]
+            for table_name in ALLOWED_TABLES
+        }
+        invalid_grains = {
+            table_name: fields
+            for table_name, fields in missing_grain_fields.items()
+            if fields
+        }
+        if invalid_grains:
+            detail = "; ".join(
+                f"{table}: {', '.join(fields)}"
+                for table, fields in sorted(invalid_grains.items())
+            )
+            raise XpdSchemaError("Missing required grain fields: " + detail + ".")
 
         index_groups: Dict[Tuple[str, str], List[Mapping[str, Any]]] = defaultdict(list)
         for row in index_rows:

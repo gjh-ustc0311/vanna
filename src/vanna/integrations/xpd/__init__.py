@@ -1,17 +1,6 @@
-"""Local, read-only XPD three-table integration."""
+"""Public XPD construction APIs."""
 
-from .config import (
-    XpdDatabaseSettings,
-    XpdModelSettings,
-    XpdProfileSettings,
-    load_xpd_profile,
-)
+from .config import load_xpd_profile
 from .factory import create_xpd_agent
 
-__all__ = [
-    "XpdDatabaseSettings",
-    "XpdModelSettings",
-    "XpdProfileSettings",
-    "load_xpd_profile",
-    "create_xpd_agent",
-]
+__all__ = ["create_xpd_agent", "load_xpd_profile"]
