@@ -6,12 +6,16 @@ import asyncio
 import json
 import traceback
 from typing import Any, AsyncGenerator, Dict, Generator, Optional, Union
+from urllib.parse import unquote
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, make_response, redirect, request
 
 from ..base import ChatHandler, ChatRequest
 from ..base.templates import get_index_html
 from ...core.user.request_context import RequestContext
+
+
+_LOCAL_DEMO_EMAILS = {"admin@example.com", "user@example.com"}
 
 
 def register_chat_routes(
@@ -32,10 +36,37 @@ def register_chat_routes(
         dev_mode = config.get("dev_mode", False)
         cdn_url = config.get("cdn_url", "https://img.vanna.ai/vanna-components.js")
         api_base_url = config.get("api_base_url", "")
+        selected_email = unquote(request.cookies.get("vanna_email", ""))
+        if selected_email not in _LOCAL_DEMO_EMAILS:
+            selected_email = ""
 
         return get_index_html(
-            dev_mode=dev_mode, cdn_url=cdn_url, api_base_url=api_base_url
+            dev_mode=dev_mode,
+            cdn_url=cdn_url,
+            api_base_url=api_base_url,
+            logged_in_email=selected_email or None,
         )
+
+    @app.route("/login", methods=["POST"])
+    def login() -> Union[Response, tuple[Response, int]]:
+        selected_email = request.form.get("email", "")
+        if selected_email not in _LOCAL_DEMO_EMAILS:
+            return jsonify({"error": "Invalid local demo identity"}), 400
+        response = make_response(redirect("/", code=303))
+        response.set_cookie(
+            "vanna_email",
+            selected_email,
+            max_age=365 * 24 * 60 * 60,
+            path="/",
+            samesite="Lax",
+        )
+        return response
+
+    @app.route("/logout", methods=["POST"])
+    def logout() -> Response:
+        response = make_response(redirect("/", code=303))
+        response.delete_cookie("vanna_email", path="/")
+        return response
 
     @app.route("/api/vanna/v2/chat_sse", methods=["POST"])
     def chat_sse() -> Union[Response, tuple[Response, int]]:

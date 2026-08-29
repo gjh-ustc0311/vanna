@@ -4,6 +4,7 @@ CLI for running Vanna Agents servers with example agents.
 
 import importlib
 import json
+from pathlib import Path
 from typing import Dict, Optional, Any, cast, TextIO, Union
 
 import click
@@ -79,13 +80,29 @@ class ExampleAgentLoader:
     help="Web framework to use",
 )
 @click.option("--port", default=8000, help="Port to run server on")
-@click.option("--host", default="0.0.0.0", help="Host to bind server to")
+@click.option(
+    "--host",
+    default=None,
+    help="Host to bind server to (defaults to 127.0.0.1 for XPD, 0.0.0.0 otherwise)",
+)
 @click.option(
     "--example", help="Example agent to use (use --list-examples to see options)"
 )
 @click.option("--list-examples", is_flag=True, help="List available example agents")
 @click.option(
     "--config", type=click.File("r"), help="JSON config file for server settings"
+)
+@click.option(
+    "--xpd-config",
+    type=click.Path(
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        path_type=Path,
+    ),
+    default=None,
+    help="Explicit xpd-report-agent schema v4 local YAML profile",
 )
 @click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option(
@@ -104,10 +121,11 @@ class ExampleAgentLoader:
 def main(
     framework: str,
     port: int,
-    host: str,
+    host: Optional[str],
     example: Optional[str],
     list_examples: bool,
     config: Optional[click.File],
+    xpd_config: Optional[Path],
     debug: bool,
     dev: bool,
     static_folder: Optional[str],
@@ -121,6 +139,18 @@ def main(
         for name, description in examples.items():
             click.echo(f"  {name:20} - {description}")
         return
+
+    if example and xpd_config is not None:
+        raise click.UsageError("--example and --xpd-config are mutually exclusive")
+
+    if xpd_config is not None:
+        host = host or "127.0.0.1"
+        if host not in {"127.0.0.1", "localhost", "::1"}:
+            raise click.UsageError(
+                "XPD mode is local-only; --host must be 127.0.0.1, localhost, or ::1"
+            )
+    else:
+        host = host or "0.0.0.0"
 
     # Load configuration
     server_config = {}
@@ -142,7 +172,23 @@ def main(
     )
 
     # Create agent
-    if example:
+    if xpd_config is not None:
+        try:
+            from ...integrations.xpd import create_xpd_agent, load_xpd_profile
+            from ...integrations.xpd.errors import XpdError
+
+            settings = load_xpd_profile(xpd_config)
+            agent = create_xpd_agent(settings)
+            click.echo(
+                "✓ Loaded XPD local profile and verified the three-table schema"
+            )
+        except XpdError as e:
+            raise click.ClickException(str(e)) from e
+        except ImportError as e:
+            raise click.ClickException(
+                "XPD dependencies are unavailable; install with 'vanna[xpd,servers]'"
+            ) from e
+    elif example:
         try:
             agent = ExampleAgentLoader.load_example_agent(example)
             click.echo(f"✓ Loaded example agent: {example}")

@@ -5,13 +5,17 @@ FastAPI route implementations for Vanna Agents.
 import json
 import traceback
 from typing import Any, AsyncGenerator, Dict, Optional
+from urllib.parse import parse_qs, unquote
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from ..base import ChatHandler, ChatRequest, ChatResponse
 from ..base.templates import get_index_html
 from ...core.user.request_context import RequestContext
+
+
+_LOCAL_DEMO_EMAILS = {"admin@example.com", "user@example.com"}
 
 
 def register_chat_routes(
@@ -27,15 +31,43 @@ def register_chat_routes(
     config = config or {}
 
     @app.get("/", response_class=HTMLResponse)
-    async def index() -> str:
+    async def index(http_request: Request) -> str:
         """Serve the main chat interface."""
         dev_mode = config.get("dev_mode", False)
         cdn_url = config.get("cdn_url", "https://img.vanna.ai/vanna-components.js")
         api_base_url = config.get("api_base_url", "")
+        selected_email = unquote(http_request.cookies.get("vanna_email", ""))
+        if selected_email not in _LOCAL_DEMO_EMAILS:
+            selected_email = ""
 
         return get_index_html(
-            dev_mode=dev_mode, cdn_url=cdn_url, api_base_url=api_base_url
+            dev_mode=dev_mode,
+            cdn_url=cdn_url,
+            api_base_url=api_base_url,
+            logged_in_email=selected_email or None,
         )
+
+    @app.post("/login")
+    async def login(http_request: Request) -> RedirectResponse:
+        body = (await http_request.body()).decode("utf-8", errors="replace")
+        selected_email = parse_qs(body).get("email", [""])[0]
+        if selected_email not in _LOCAL_DEMO_EMAILS:
+            raise HTTPException(status_code=400, detail="Invalid local demo identity")
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(
+            "vanna_email",
+            selected_email,
+            max_age=365 * 24 * 60 * 60,
+            path="/",
+            samesite="lax",
+        )
+        return response
+
+    @app.post("/logout")
+    async def logout() -> RedirectResponse:
+        response = RedirectResponse(url="/", status_code=303)
+        response.delete_cookie("vanna_email", path="/")
+        return response
 
     @app.post("/api/vanna/v2/chat_sse")
     async def chat_sse(
