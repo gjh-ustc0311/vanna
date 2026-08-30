@@ -100,10 +100,10 @@ class RunSqlTool(Tool[RunSqlToolArgs]):
                     if len(results_preview) > 1000:
                         results_preview = (
                             results_preview[:1000]
-                            + "\n(Results truncated to 1000 characters. FOR LARGE RESULTS YOU DO NOT NEED TO SUMMARIZE THESE RESULTS OR PROVIDE OBSERVATIONS. THE NEXT STEP SHOULD BE A VISUALIZE_DATA CALL)"
+                            + "\n(Results truncated to 1000 characters; use the saved CSV for the complete result.)"
                         )
 
-                    result = f"{results_preview}\n\nResults saved to file: {filename}\n\n**IMPORTANT: FOR VISUALIZE_DATA USE FILENAME: {filename}**"
+                    result = f"{results_preview}\n\nResults saved to file: {filename}"
 
                     # Create DataFrame component for UI
                     dataframe_component = DataFrameComponent.from_records(

@@ -1,5 +1,8 @@
 # Vanna FastAPI-only 服务栈架构与代码设计
 
+> 本文是 002 期历史架构；Legacy Adapter 和支持矩阵已由
+> [003 支持面精简](./support-xpd-tables-003.md) 取代。
+
 ## 1. 目标架构
 
 ```mermaid

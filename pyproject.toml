@@ -4,7 +4,7 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "vanna"
-version = "2.0.2"
+version = "3.0.0"
 authors = [
   { name="Zain Hoda", email="zain@vanna.ai" },
 ]
@@ -21,13 +21,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "click>=8.0.0",
     "pandas",
-    "httpx>=0.28.0",
     "PyYAML",
-    "plotly",
-    "tabulate",
-    "sqlparse",
-    "sqlalchemy",
-    "requests",
 ]
 
 [project.scripts]
@@ -41,44 +35,13 @@ vanna = "vanna.servers.cli.server_runner:main"
 fastapi = ["fastapi>=0.68.0", "uvicorn>=0.15.0"]
 servers = ["vanna[fastapi]"]
 
-postgres = ["psycopg2-binary", "db-dtypes"]
 mysql = ["PyMySQL"]
 xpd = ["openai", "PyMySQL", "sqlglot>=25.0.0"]
-clickhouse = ["clickhouse_connect"]
-bigquery = ["google-cloud-bigquery"]
-snowflake = ["snowflake-connector-python"]
-duckdb = ["duckdb"]
-google = ["google-generativeai", "google-cloud-aiplatform"]
-all = ["psycopg2-binary", "db-dtypes", "PyMySQL", "sqlglot>=25.0.0", "google-cloud-bigquery", "snowflake-connector-python", "duckdb", "openai", "qianfan", "mistralai>=1.0.0", "chromadb>=1.1.0", "anthropic", "zhipuai", "marqo", "google-generativeai", "google-cloud-aiplatform", "qdrant-client>=1.0.0", "fastembed", "ollama", "httpx", "opensearch-py", "opensearch-dsl", "transformers", "pinecone", "pymilvus[model]","weaviate-client", "azure-search-documents", "azure-identity", "azure-common", "faiss-cpu", "boto", "boto3", "botocore", "langchain_core", "langchain_postgres", "langchain-community", "langchain-huggingface", "xinference-client"]
-test = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-mock>=3.10.0", "pytest-cov>=4.0.0", "tox>=4.0.0"]
-dev = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-mock>=3.10.0", "pytest-cov>=4.0.0", "tox>=4.0.0", "mypy", "ruff", "pandas-stubs", "plotly-stubs", "types-PyYAML", "types-requests", "types-tabulate"]
-chromadb = ["chromadb>=1.1.0"]
+all = ["anthropic", "openai", "PyMySQL", "sqlglot>=25.0.0"]
+test = ["httpx>=0.28.0", "pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-mock>=3.10.0", "pytest-cov>=4.0.0", "tox>=4.0.0"]
+dev = ["httpx>=0.28.0", "pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-mock>=3.10.0", "pytest-cov>=4.0.0", "tox>=4.0.0", "mypy", "ruff", "pandas-stubs", "types-PyYAML"]
 openai = ["openai"]
-azureopenai = ["openai", "azure-identity"]
-qianfan = ["qianfan"]
-mistralai = ["mistralai>=1.0.0"]
 anthropic = ["anthropic"]
-gemini = ["google-genai"]
-marqo = ["marqo"]
-zhipuai = ["zhipuai"]
-ollama = ["ollama", "httpx"]
-qdrant = ["qdrant-client>=1.0.0", "fastembed"]
-vllm = ["vllm"]
-pinecone = ["pinecone", "fastembed"]
-opensearch = ["opensearch-py", "opensearch-dsl", "langchain-community", "langchain-huggingface"]
-hf = ["transformers"]
-milvus = ["pymilvus[model]"]
-bedrock = ["boto3", "botocore"]
-weaviate = ["weaviate-client"]
-azuresearch = ["azure-search-documents", "azure-identity", "azure-common", "fastembed"]
-pgvector = ["langchain-postgres>=0.0.12"]
-faiss-cpu = ["faiss-cpu"]
-faiss-gpu = ["faiss-gpu"]
-xinference-client = ["xinference-client"]
-oracle = ["oracledb", "chromadb<1.0.0"]
-hive = ["pyhive", "thrift"]
-presto = ["pyhive", "thrift"]
-mssql = ["pyodbc"]
 
 [tool.flit.module]
 name = "vanna"
@@ -88,7 +51,6 @@ path = "src/vanna"
 exclude = [
     "frontends/",
     "tests/",
-    "notebooks/",
     ".github/",
     "tox.ini",
 ]
@@ -103,12 +65,7 @@ markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "anthropic: marks tests requiring Anthropic API key",
     "openai: marks tests requiring OpenAI API key",
-    "azureopenai: marks tests requiring Azure OpenAI API key",
-    "gemini: marks tests requiring Gemini API key",
-    "ollama: marks tests requiring local Ollama instance",
-    "legacy: marks tests for legacy adapter",
     "slow: marks tests as slow running",
-    "postgres: marks tests requiring PostgreSQL",
     "mysql: marks tests requiring MySQL",
 ]
 filterwarnings = [
@@ -160,7 +117,7 @@ ignore = [
     "W291",  # trailing whitespace
     "W293",  # blank line with whitespace
 
-    # Naming conventions (legacy compatibility)
+    # Naming conventions (compatibility with existing public symbols)
     "N801",  # invalid class name
     "N802",  # function name should be lowercase
     "N803",  # argument name should be lowercase
@@ -181,7 +138,7 @@ ignore = [
     "B008",  # do not perform function calls in argument defaults
     "B024",  # abstract base class without abstract method
     "B027",  # empty method without abstract decorator
-    "B904",  # raise without from inside except (intentional in legacy code)
+    "B904",  # raise without from inside except (intentional in existing code)
     "B905",  # zip without explicit strict
 
     # Comprehension/collection style

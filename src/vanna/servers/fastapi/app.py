@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from ... import __version__
 from ...core import Agent
 from ..base import ChatHandler
 from .routes import register_chat_routes
@@ -39,7 +40,7 @@ class VannaFastAPIServer:
         app = FastAPI(
             title="Vanna Agents API",
             description="API server for Vanna Agents framework",
-            version="0.1.0",
+            version=__version__,
             **app_config,
         )
 

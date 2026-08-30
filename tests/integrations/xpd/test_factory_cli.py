@@ -117,6 +117,7 @@ def test_fastapi_local_login_sets_cookie_and_renders_authenticated_page():
     assert "admin@example.com</span>" in authenticated.text
     assert invalid.status_code == 400
     assert health.json() == {"status": "healthy", "service": "vanna"}
+    assert app.version == "3.0.0"
     assert {
         "/",
         "/login",
@@ -180,18 +181,16 @@ def _run(awaitable):
     return asyncio.run(awaitable)
 
 
-def test_cli_rejects_mixed_modes_and_non_loopback_xpd_host(tmp_path):
+def test_cli_requires_xpd_config_and_rejects_non_loopback_host(tmp_path):
     profile = tmp_path / "profile.yaml"
     profile.write_text("placeholder", encoding="utf-8")
     runner = CliRunner()
 
-    mixed = runner.invoke(
-        main, ["--example", "mock_quickstart", "--xpd-config", str(profile)]
-    )
+    missing = runner.invoke(main, [])
     public = runner.invoke(main, ["--xpd-config", str(profile), "--host", "0.0.0.0"])
 
-    assert mixed.exit_code == 2
-    assert "mutually exclusive" in mixed.output
+    assert missing.exit_code == 2
+    assert "Missing option '--xpd-config'" in missing.output
     assert public.exit_code == 2
     assert "local-only" in public.output
 
@@ -205,6 +204,8 @@ def test_cli_is_fastapi_only():
     assert help_result.exit_code == 0
     assert "--framework" not in help_result.output
     assert "--debug" not in help_result.output
+    assert "--example" not in help_result.output
+    assert "--list-examples" not in help_result.output
     assert removed_option.exit_code == 2
     assert "No such option" in removed_option.output
     assert "--framework" in removed_option.output
@@ -261,27 +262,28 @@ def test_cli_uses_loopback_default_for_xpd_mode(monkeypatch, tmp_path):
     assert captured["config"]["_xpd_chat_sse_logging"] is True
 
 
-def test_cli_does_not_enable_xpd_logging_for_example_mode(monkeypatch):
-    from vanna.servers.cli import server_runner
+def test_cli_accepts_all_loopback_host_forms(monkeypatch, tmp_path):
+    import vanna.integrations.xpd as xpd
     from vanna.servers.fastapi import app as fastapi_app
 
-    captured = {}
+    profile = tmp_path / "profile.yaml"
+    profile.write_text("placeholder", encoding="utf-8")
+    captured_hosts = []
 
     class FakeServer:
         def __init__(self, agent, config):
-            captured["config"] = config
+            pass
 
         def run(self, host, port):
-            captured.update(host=host, port=port)
+            captured_hosts.append(host)
 
-    monkeypatch.setattr(
-        server_runner.ExampleAgentLoader,
-        "load_example_agent",
-        lambda example_name: object(),
-    )
+    monkeypatch.setattr(xpd, "load_xpd_profile", lambda path: object())
+    monkeypatch.setattr(xpd, "create_xpd_agent", lambda settings: object())
     monkeypatch.setattr(fastapi_app, "VannaFastAPIServer", FakeServer)
 
-    result = CliRunner().invoke(main, ["--example", "mock_quickstart"])
+    runner = CliRunner()
+    for host in ("localhost", "::1"):
+        result = runner.invoke(main, ["--xpd-config", str(profile), "--host", host])
+        assert result.exit_code == 0, result.output
 
-    assert result.exit_code == 0, result.output
-    assert captured["config"]["_xpd_chat_sse_logging"] is False
+    assert captured_hosts == ["localhost", "::1"]

@@ -190,8 +190,7 @@ class XpdSchemaCatalog:
             name
             for name in ALLOWED_TABLES
             if name in table_by_name
-            and str(table_by_name[name].get("TABLE_TYPE", "")).upper()
-            != "BASE TABLE"
+            and str(table_by_name[name].get("TABLE_TYPE", "")).upper() != "BASE TABLE"
         ]
         if missing or non_base:
             details = []

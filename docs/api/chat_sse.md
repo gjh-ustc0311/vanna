@@ -1,6 +1,6 @@
 # `chat_sse` API 与处理说明
 
-本文说明 Vanna 2.0.2 中 FastAPI 版本 `chat_sse` 接口的请求、SSE 响应、后端处理流程、对话历史设计、内置 WebComponent 前端处理方式，以及当前的大数据与文件返回边界。
+本文说明 Vanna 3.0.0 中 FastAPI 版本 `chat_sse` 接口的请求、SSE 响应、后端处理流程、对话历史设计、内置 WebComponent 前端处理方式，以及当前的大数据与文件返回边界。
 
 项目当前 FastAPI HTTP 接口的索引和公共协议见 [API 总览](./README.md)。
 
@@ -209,7 +209,7 @@ status_bar_update, task_tracker_update, chat_input_update
 DataFrame 的行数据位于 `rich.data.data`，不是 `rich.data.rows`：
 
 ```text
-data: {"rich":{"id":"...","type":"dataframe","lifecycle":"create","children":[],"timestamp":"...","visible":true,"interactive":false,"data":{"data":[{"month":"2026-01","sales":120000},{"month":"2026-02","sales":135000}],"columns":["month","sales"],"title":"Query Results","description":"SQL query returned 2 rows with 2 columns","row_count":2,"column_count":2,"max_rows_displayed":100,"searchable":true,"sortable":true,"filterable":true,"exportable":true,"striped":true,"bordered":true,"compact":false,"paginated":true,"page_size":25,"column_types":{}}},"simple":{"type":"text","semantic_type":null,"metadata":null,"text":"month,sales\n2026-01,120000\n2026-02,135000\n\nResults saved to file: query_results_ab12cd34.csv\n\n**IMPORTANT: FOR VISUALIZE_DATA USE FILENAME: query_results_ab12cd34.csv**"},"conversation_id":"conv_12345678","request_id":"f20e8b37-5dbc-40d4-8a06-f3a877850ac7","timestamp":1788008400.123}
+data: {"rich":{"id":"...","type":"dataframe","lifecycle":"create","children":[],"timestamp":"...","visible":true,"interactive":false,"data":{"data":[{"month":"2026-01","sales":120000},{"month":"2026-02","sales":135000}],"columns":["month","sales"],"title":"Query Results","description":"SQL query returned 2 rows with 2 columns","row_count":2,"column_count":2,"max_rows_displayed":100,"searchable":true,"sortable":true,"filterable":true,"exportable":true,"striped":true,"bordered":true,"compact":false,"paginated":true,"page_size":25,"column_types":{}}},"simple":{"type":"text","semantic_type":null,"metadata":null,"text":"month,sales\n2026-01,120000\n2026-02,135000\n\nResults saved to file: query_results_ab12cd34.csv"},"conversation_id":"conv_12345678","request_id":"f20e8b37-5dbc-40d4-8a06-f3a877850ac7","timestamp":1788008400.123}
 
 ```
 
@@ -339,7 +339,7 @@ DataFrame 是一个特例：Python 组件的 `rows` 字段会序列化成 `rich.
 4. 完整 DataFrame 同时转换为 CSV，并写入按用户隔离的 FileSystem：`query_results_<8位ID>.csv`。
 5. 给 LLM 的 `result_for_llm` 包含 CSV 文本预览和内部文件名；CSV 超过 1000 个字符时，仅保留前 1000 个字符并追加截断提示。
 6. `simple` fallback 使用同一段文本；Rich DataFrame 不受 1000 字符限制。
-7. 后续 `visualize_data` 等工具可以按文件名读取完整 CSV。
+7. 自定义下游文件工具仍可按文件名读取完整 CSV；3.0 不再内置图表生成工具。
 
 该内部 CSV 不是 HTTP 附件，也没有对应的 V2 下载 URL。
 

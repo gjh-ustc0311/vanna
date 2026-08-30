@@ -41,7 +41,11 @@ def _metadata(include_all=True):
     if not include_all:
         table_names.pop()
     tables = [
-        {"TABLE_NAME": name, "TABLE_TYPE": "BASE TABLE", "TABLE_COMMENT": "safe\x00 comment"}
+        {
+            "TABLE_NAME": name,
+            "TABLE_TYPE": "BASE TABLE",
+            "TABLE_COMMENT": "safe\x00 comment",
+        }
         for name in table_names
     ]
     columns = [
@@ -119,7 +123,9 @@ def _metadata(include_all=True):
     return [tables, columns, indexes, []]
 
 
-def test_catalog_requires_all_three_base_tables_and_builds_logical_join(database_settings):
+def test_catalog_requires_all_three_base_tables_and_builds_logical_join(
+    database_settings,
+):
     connection = MetadataConnection(_metadata())
     catalog = XpdSchemaCatalog(database_settings, connection_factory=lambda: connection)
 
@@ -136,7 +142,9 @@ def test_catalog_requires_all_three_base_tables_and_builds_logical_join(database
     ]
     assert evidence.relationships[0].kind == "logical"
     assert [metric.name for metric in evidence.metrics] == ["pay_amount"]
-    assert "\u202e" not in evidence.tables["tb_live_goods_daily_stats"].columns[0].comment
+    assert (
+        "\u202e" not in evidence.tables["tb_live_goods_daily_stats"].columns[0].comment
+    )
 
 
 def test_catalog_fails_preflight_when_required_table_is_missing(database_settings):

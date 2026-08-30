@@ -1,7 +1,5 @@
-"""
-CLI components for Vanna Agents servers.
-"""
+"""CLI entry point for the XPD local server."""
 
-from .server_runner import ExampleAgentLoader
+from .server_runner import main
 
-__all__ = ["ExampleAgentLoader"]
+__all__ = ["main"]

@@ -9,7 +9,9 @@ class XpdError(Exception):
 
     def __init__(self, detail: str = "") -> None:
         self.detail = detail
-        message = self.public_message if not detail else f"{self.public_message} {detail}"
+        message = (
+            self.public_message if not detail else f"{self.public_message} {detail}"
+        )
         super().__init__(message)
 
 

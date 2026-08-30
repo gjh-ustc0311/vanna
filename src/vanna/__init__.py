@@ -6,7 +6,7 @@ with tool execution, conversation management, and user scoping.
 """
 
 # Version information
-__version__ = "0.1.0"
+__version__ = "3.0.0"
 
 # Import core framework components
 from .core import (
@@ -83,7 +83,7 @@ from .core import (
 )
 
 # Import basic implementations
-from .integrations import MemoryConversationStore, MockLlmService
+from .integrations import MemoryConversationStore
 
 # Main exports
 __all__ = [
@@ -153,13 +153,6 @@ __all__ = [
     "EvaluationDataset",
     # Basic implementations
     "MemoryConversationStore",
-    "MockLlmService",
-    # Server components
-    "VannaFastAPIServer",
-    "ChatHandler",
-    "ChatRequest",
-    "ChatStreamChunk",
-    "ExampleAgentLoader",
     # Exceptions
     "AgentError",
     "ToolExecutionError",

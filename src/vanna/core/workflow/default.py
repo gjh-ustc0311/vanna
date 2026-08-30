@@ -35,7 +35,6 @@ class DefaultWorkflowHandler(WorkflowHandler):
     This handler provides a starter UI that:
     - Checks if run_sql tool is available (critical)
     - Checks if memory tools are available (warning if missing)
-    - Checks if visualization tools are available
     - Provides appropriate setup guidance based on what's missing
     """
 
@@ -215,7 +214,7 @@ class DefaultWorkflowHandler(WorkflowHandler):
         elif analysis["is_complete"]:
             title = "Admin: System Ready"
             content = "**🔒 Admin View** - You have admin privileges and will see additional system information.\n\n**Vanna AI** is fully configured and ready.\n\n"
-            content += "**Setup:** SQL ✓ | Memory ✓ | Visualization ✓"
+            content += "**Setup:** SQL ✓ | Memory ✓"
             status = "success"
             icon = "✅"
         else:
@@ -224,7 +223,6 @@ class DefaultWorkflowHandler(WorkflowHandler):
             setup_items = []
             setup_items.append("SQL ✓")
             setup_items.append("Memory ✓" if analysis["has_memory"] else "Memory ✗")
-            setup_items.append("Viz ✓" if analysis["has_viz"] else "Viz ✗")
             content += f"**Setup:** {' | '.join(setup_items)}"
             status = "warning" if not analysis["has_memory"] else "success"
             icon = "⚠️" if not analysis["has_memory"] else "✅"
@@ -296,24 +294,13 @@ class DefaultWorkflowHandler(WorkflowHandler):
         has_save = "save_question_tool_args" in tool_names
         has_memory = has_search and has_save
 
-        # Visualization tools (nice to have)
-        has_viz = any(
-            name in tool_names
-            for name in [
-                "visualize_data",
-                "create_chart",
-                "plot_data",
-                "generate_chart",
-            ]
-        )
-
         # Other useful tools
         has_calculator = any(
             name in tool_names for name in ["calculator", "calc", "calculate"]
         )
 
         # Determine overall status
-        is_complete = has_sql and has_memory and has_viz
+        is_complete = has_sql and has_memory
         is_functional = has_sql
 
         return {
@@ -321,7 +308,6 @@ class DefaultWorkflowHandler(WorkflowHandler):
             "has_memory": has_memory,
             "has_search": has_search,
             "has_save": has_save,
-            "has_viz": has_viz,
             "has_calculator": has_calculator,
             "is_complete": is_complete,
             "is_functional": is_functional,
@@ -377,23 +363,6 @@ class DefaultWorkflowHandler(WorkflowHandler):
             )
         cards.append(UiComponent(rich_component=memory_card, simple_component=None))
 
-        # Visualization Status (Nice to have)
-        if analysis["has_viz"]:
-            viz_card = StatusCardComponent(
-                title="Visualization",
-                status="success",
-                description="Chart creation tools available",
-                icon="📊",
-            )
-        else:
-            viz_card = StatusCardComponent(
-                title="Visualization",
-                status="info",
-                description="No visualization tools - results will be text/tables only",
-                icon="📋",
-            )
-        cards.append(UiComponent(rich_component=viz_card, simple_component=None))
-
         return cards
 
     def _generate_setup_guidance(
@@ -415,8 +384,7 @@ class DefaultWorkflowHandler(WorkflowHandler):
                 "```\n\n"
                 "**Next Steps:**\n"
                 "1. Configure your database connection\n"
-                "2. Add memory tools for learning\n"
-                "3. Add visualization tools for charts"
+                "2. Add memory tools for learning"
             )
 
         else:
@@ -430,15 +398,6 @@ class DefaultWorkflowHandler(WorkflowHandler):
                     "from vanna.tools import SearchSavedCorrectToolUses, SaveQuestionToolArgs\n"
                     "tool_registry.register(SearchSavedCorrectToolUses())\n"
                     "tool_registry.register(SaveQuestionToolArgs())\n"
-                    "```"
-                )
-
-            if not analysis["has_viz"]:
-                suggestions.append(
-                    "**📊 Add Visualization** - Create charts and graphs:\n"
-                    "```python\n"
-                    "from vanna.tools import VisualizeDataTool\n"
-                    "tool_registry.register(VisualizeDataTool())\n"
                     "```"
                 )
 
@@ -484,7 +443,6 @@ class DefaultWorkflowHandler(WorkflowHandler):
         status_content += "## Tool Status\n\n"
         status_content += f"- **SQL Connection:** {'✅ Available' if analysis['has_sql'] else '❌ Missing (Required)'}\n"
         status_content += f"- **Memory System:** {'✅ Complete' if analysis['has_memory'] else '⚠️ Incomplete' if analysis['has_search'] or analysis['has_save'] else '❌ Missing'}\n"
-        status_content += f"- **Visualization:** {'✅ Available' if analysis['has_viz'] else '📋 Text/Tables Only'}\n"
         status_content += f"- **Calculator:** {'✅ Available' if analysis['has_calculator'] else '➖ Not Available'}\n\n"
 
         if analysis["tool_names"]:

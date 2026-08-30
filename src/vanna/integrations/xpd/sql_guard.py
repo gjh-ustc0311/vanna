@@ -106,9 +106,7 @@ class XpdSqlGuard:
         }
         for node in root.walk():
             if type(node).__name__ in forbidden_class_names:
-                raise XpdSqlRejected(
-                    f"Forbidden SQL construct: {type(node).__name__}."
-                )
+                raise XpdSqlRejected(f"Forbidden SQL construct: {type(node).__name__}.")
 
         for star in root.find_all(exp.Star):
             if not isinstance(star.parent, exp.Count):
@@ -259,9 +257,10 @@ class XpdSqlGuard:
 
         joins = list(scope.expression.args.get("joins") or [])
         for join in joins:
-            if str(join.args.get("kind") or "").upper() == "CROSS" or join.args.get(
-                "on"
-            ) is None:
+            if (
+                str(join.args.get("kind") or "").upper() == "CROSS"
+                or join.args.get("on") is None
+            ):
                 raise XpdSqlRejected("CROSS and implicit joins are forbidden.")
 
             joined_alias = join.this.alias_or_name

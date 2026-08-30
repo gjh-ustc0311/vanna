@@ -1,5 +1,8 @@
 # Vanna FastAPI-only 服务栈精简 PRD
 
+> 本文是 002 期历史需求；其中保留 Legacy Adapter 和通用 CLI 的承诺已由
+> [003 支持面精简](./support-xpd-tables-003.md) 取代。
+
 ## 1. 背景与目标
 
 仓库同时保留了 V2 Flask Server、Legacy Flask `/api/v0/*`、FastAPI

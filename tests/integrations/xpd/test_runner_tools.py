@@ -87,22 +87,24 @@ async def test_runner_retries_only_connection_and_bounds_result(
     runner = XpdReadOnlyRunner(
         database_settings, XpdSqlGuard(schema_evidence), connection_factory=connect
     )
-    result = await runner.run(
-        "SELECT item_id, pay_amt FROM tb_live_goods_daily_stats"
-    )
+    result = await runner.run("SELECT item_id, pay_amt FROM tb_live_goods_daily_stats")
 
     assert attempts == 2
     assert result.row_count == 100
     assert result.truncated is True
     assert result.rows[0]["pay_amt"] == "1.20"
-    bounded = [sql for sql, _params in cursor.executed if "_vanna_xpd_bounded_result" in sql]
+    bounded = [
+        sql for sql, _params in cursor.executed if "_vanna_xpd_bounded_result" in sql
+    ]
     assert len(bounded) == 1
     assert bounded[0].endswith("LIMIT 101")
     assert connection.rolled_back is True
 
 
 @pytest.mark.asyncio
-async def test_runner_does_not_replay_a_timed_out_query(database_settings, schema_evidence):
+async def test_runner_does_not_replay_a_timed_out_query(
+    database_settings, schema_evidence
+):
     cursor = QueryCursor([], query_error=RuntimeError(3024, "raw database detail"))
     connection = QueryConnection(cursor)
     runner = XpdReadOnlyRunner(
@@ -115,7 +117,10 @@ async def test_runner_does_not_replay_a_timed_out_query(database_settings, schem
         await runner.run("SELECT item_id FROM tb_live_goods_daily_stats")
 
     assert "raw database detail" not in str(caught.value)
-    assert len([sql for sql, _ in cursor.executed if "_vanna_xpd_bounded_result" in sql]) == 1
+    assert (
+        len([sql for sql, _ in cursor.executed if "_vanna_xpd_bounded_result" in sql])
+        == 1
+    )
 
 
 @pytest.mark.asyncio

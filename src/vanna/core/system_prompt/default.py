@@ -85,7 +85,7 @@ class DefaultSystemPromptBuilder(SystemPromptBuilder):
             prompt_parts.extend(
                 [
                     "",
-                    "• BEFORE executing any tool (run_sql, visualize_data, or calculator), you MUST first call search_saved_correct_tool_uses with the user's question to check if there are existing successful patterns for similar questions.",
+                    "• BEFORE executing any non-memory tool, you MUST first call search_saved_correct_tool_uses with the user's question to check if there are existing successful patterns for similar questions.",
                     "",
                     "• Review the search results (if any) to inform your approach before proceeding with other tool calls.",
                 ]
@@ -137,7 +137,7 @@ class DefaultSystemPromptBuilder(SystemPromptBuilder):
                     "  • Company-specific terminology and definitions",
                     "  • Query patterns or best practices for this database",
                     "  • Domain knowledge about the business or data",
-                    "  • User preferences for queries or visualizations",
+                    "  • User preferences for queries or output presentation",
                     "",
                     "DO NOT save:",
                     "  • Information already captured in tool usage memory",

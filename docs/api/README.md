@@ -15,8 +15,8 @@ WebSocket 对话端点。
 
 ## 1. 服务与 Endpoint
 
-默认 CLI 端口为 `8000`。XPD 模式默认绑定 `127.0.0.1`，普通模式默认绑定
-`0.0.0.0`；生产部署应显式指定符合安全要求的监听地址。
+CLI 仅启动 XPD 本地模式，默认端口为 `8000`，默认绑定 `127.0.0.1`。
+监听地址只允许 `127.0.0.1`、`localhost` 或 `::1`。
 
 | Method | Path | 说明 |
 | --- | --- | --- |
@@ -139,17 +139,14 @@ Chunk 外壳传输。
 
 ## 7. 服务启动与集成
 
-CLI：
-
-```bash
-vanna --example mock_quickstart --host 127.0.0.1 --port 8000
-```
-
-XPD：
+XPD CLI 必须显式传入 profile：
 
 ```bash
 vanna --xpd-config /absolute/path/to/app-local.yaml
 ```
+
+CLI 不再提供内置 Example Agent、无参 Demo 或外部 Agent factory；通用 Agent
+服务应通过下面的 Python API 装配。
 
 Python：
 
@@ -183,5 +180,5 @@ register_chat_routes(app, ChatHandler(agent))
   或 Polling 的 `ChatResponse`；不存在逐 Endpoint 的兼容映射。
 - WebSocket 客户端迁移到 SSE。浏览器无法使用自定义 Header 时，应使用
   Cookie、同源网关或服务端支持的认证方式。
-- `LegacyVannaAdapter` 仅保留 Python `VannaBase` 到 Agent Tool 的桥接，
-  不会恢复任何已删除的 HTTP API。
+- Vanna 0.x Python 兼容包和 Adapter 已全部删除；调用方必须直接迁移到当前
+  `Agent`、`ToolRegistry`、Capability 和受支持 Integration API。

@@ -1,88 +1,22 @@
-"""
-CLI for running Vanna Agents servers with example agents.
-"""
+"""CLI for running the local XPD Vanna server."""
 
-import importlib
 import json
 from pathlib import Path
-from typing import Dict, Optional, Any, cast, TextIO
+from typing import Optional, TextIO, cast
 
 import click
 
-from ...core import Agent
-
-
-class ExampleAgentLoader:
-    """Loads example agents for the CLI."""
-
-    @staticmethod
-    def list_available_examples() -> Dict[str, str]:
-        """Return available examples with descriptions."""
-        return {
-            "mock_quickstart": "Basic agent with mock LLM service",
-            "anthropic_quickstart": "Agent configured for Anthropic's Claude API",
-            "openai_quickstart": "Agent configured for OpenAI's GPT models",
-            "mock_custom_tool": "Agent with custom tool demonstration (mock LLM)",
-            "mock_quota_example": "Agent with usage quota management (mock LLM)",
-            "mock_rich_components_demo": "Rich components demonstration with cards, tasks, and progress (mock LLM)",
-            "coding_agent_example": "Coding agent with file system tools (list, read, write files)",
-            "email_auth_example": "Email-based authentication demonstration (mock LLM)",
-            "claude_sqlite_example": "Claude agent with SQLite database querying capabilities",
-            "mock_sqlite_example": "Mock agent with SQLite database demonstration",
-        }
-
-    @staticmethod
-    def load_example_agent(example_name: str) -> Agent:
-        """Load an example agent by name.
-
-        Args:
-            example_name: Name of the example to load
-
-        Returns:
-            Configured agent instance
-
-        Raises:
-            ValueError: If example not found or failed to load
-        """
-        try:
-            # Import the example module
-            module = importlib.import_module(f"vanna.examples.{example_name}")
-
-            # Look for standard factory functions
-            factory_functions = [
-                "create_demo_agent",
-                "create_agent",
-                "create_basic_demo",
-            ]
-
-            for func_name in factory_functions:
-                if hasattr(module, func_name):
-                    factory = getattr(module, func_name)
-                    return cast(Agent, factory())
-
-            # Look for module-level agent instances
-            if hasattr(module, "main_agent"):
-                return cast(Agent, module.main_agent)
-
-            raise AttributeError(f"No agent factory found in {example_name}")
-
-        except ImportError as e:
-            raise ValueError(f"Example '{example_name}' not found: {e}")
-        except Exception as e:
-            raise ValueError(f"Failed to load example '{example_name}': {e}")
+from ...integrations.xpd.errors import XpdError
 
 
 @click.command()
 @click.option("--port", default=8000, help="Port to run server on")
 @click.option(
     "--host",
-    default=None,
-    help="Host to bind server to (defaults to 127.0.0.1 for XPD, 0.0.0.0 otherwise)",
+    default="127.0.0.1",
+    show_default=True,
+    help="Loopback host to bind the local XPD server to",
 )
-@click.option(
-    "--example", help="Example agent to use (use --list-examples to see options)"
-)
-@click.option("--list-examples", is_flag=True, help="List available example agents")
 @click.option(
     "--config", type=click.File("r"), help="JSON config file for server settings"
 )
@@ -95,7 +29,7 @@ class ExampleAgentLoader:
         readable=True,
         path_type=Path,
     ),
-    default=None,
+    required=True,
     help="Explicit xpd-report-agent schema v4 local YAML profile",
 )
 @click.option(
@@ -113,100 +47,51 @@ class ExampleAgentLoader:
 )
 def main(
     port: int,
-    host: Optional[str],
-    example: Optional[str],
-    list_examples: bool,
+    host: str,
     config: Optional[click.File],
-    xpd_config: Optional[Path],
+    xpd_config: Path,
     dev: bool,
     static_folder: Optional[str],
     cdn_url: str,
 ) -> None:
-    """Run Vanna Agents server with optional example agent."""
+    """Run the XPD local read-only data assistant."""
 
-    if list_examples:
-        click.echo("Available example agents:")
-        examples = ExampleAgentLoader.list_available_examples()
-        for name, description in examples.items():
-            click.echo(f"  {name:20} - {description}")
-        return
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        raise click.UsageError(
+            "XPD mode is local-only; --host must be 127.0.0.1, localhost, or ::1"
+        )
 
-    if example and xpd_config is not None:
-        raise click.UsageError("--example and --xpd-config are mutually exclusive")
-
-    if xpd_config is not None:
-        host = host or "127.0.0.1"
-        if host not in {"127.0.0.1", "localhost", "::1"}:
-            raise click.UsageError(
-                "XPD mode is local-only; --host must be 127.0.0.1, localhost, or ::1"
-            )
-    else:
-        host = host or "0.0.0.0"
-
-    # Load configuration
     server_config = {}
     if config:
         server_config = json.load(cast(TextIO, config))
 
-    # Set default static folder based on dev mode
     if static_folder is None:
-        static_folder = "frontend/webcomponent/static" if dev else "static"
+        static_folder = "frontends/webcomponent/static" if dev else "static"
 
-    # Add CLI options to config
     server_config.update(
         {
             "dev_mode": dev,
             "static_folder": static_folder,
             "cdn_url": cdn_url,
-            "api_base_url": "",  # Can be overridden in config file
-            # Reserved internal marker: only the explicit XPD startup path may
-            # enable full client-boundary request/response logging.
-            "_xpd_chat_sse_logging": xpd_config is not None,
+            "api_base_url": "",
+            "_xpd_chat_sse_logging": True,
         }
     )
 
-    # Create agent
-    if xpd_config is not None:
-        try:
-            from ...integrations.xpd import create_xpd_agent, load_xpd_profile
-            from ...integrations.xpd.errors import XpdError
+    try:
+        from ...integrations.xpd import create_xpd_agent, load_xpd_profile
+        from ..fastapi.app import VannaFastAPIServer
 
-            settings = load_xpd_profile(xpd_config)
-            agent = create_xpd_agent(settings)
-            click.echo("✓ Loaded XPD local profile and verified the three-table schema")
-        except XpdError as e:
-            raise click.ClickException(str(e)) from e
-        except ImportError as e:
-            raise click.ClickException(
-                "XPD dependencies are unavailable; install with 'vanna[xpd,servers]'"
-            ) from e
-    elif example:
-        try:
-            agent = ExampleAgentLoader.load_example_agent(example)
-            click.echo(f"✓ Loaded example agent: {example}")
-        except ValueError as e:
-            click.echo(f"Error: {e}", err=True)
-            return
-    else:
-        # Fallback to basic agent
-        try:
-            from ...agents import create_basic_agent
-            from ...integrations.mock import MockLlmService
+        settings = load_xpd_profile(xpd_config)
+        agent = create_xpd_agent(settings)
+        click.echo("✓ Loaded XPD local profile and verified the three-table schema")
+    except XpdError as e:
+        raise click.ClickException(str(e)) from e
+    except ImportError as e:
+        raise click.ClickException(
+            "XPD dependencies are unavailable; install with 'vanna[xpd,servers]'"
+        ) from e
 
-            llm_service = MockLlmService(
-                response_content="Hello! I'm a Vanna Agents demo server. How can I help you?"
-            )
-            agent = create_basic_agent(llm_service)
-            click.echo(
-                "✓ Using basic demo agent (use --example to specify different agent)"
-            )
-        except ImportError as e:
-            click.echo(f"Error: Could not create basic agent: {e}", err=True)
-            return
-
-    from ..fastapi.app import VannaFastAPIServer
-
-    # Create and run the FastAPI server
     server = VannaFastAPIServer(agent, config=server_config)
     click.echo(f"🚀 Starting FastAPI server on http://{host}:{port}")
     click.echo(f"📖 API docs available at http://{host}:{port}/docs")

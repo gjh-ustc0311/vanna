@@ -1,5 +1,8 @@
 # Vanna FastAPI-only 服务栈精简实施计划
 
+> 本文是 002 期历史计划；当前源码、依赖和 CLI 边界以
+> [003 支持面精简](./support-xpd-tables-003.md) 为准。
+
 ## 1. 实施原则
 
 - 采用硬删除，不保留兼容路由、导入 shim 或空 `flask` extra。
