@@ -8,9 +8,6 @@
 
 https://github.com/user-attachments/assets/476cd421-d0b0-46af-8b29-0f40c73d6d83
 
-
-![Vanna2 Demo](img/architecture.png)
-
 ---
 
 ## What's New in 2.0
@@ -95,7 +92,7 @@ All streamed in real-time to your web component.
 **Any LLM:** OpenAI, Anthropic, Ollama, Azure, Google Gemini, AWS Bedrock, Mistral, Others
 **Any Database:** PostgreSQL, MySQL, Snowflake, BigQuery, Redshift, SQLite, Oracle, SQL Server, DuckDB, ClickHouse, Others
 **Your Auth System:** Bring your own — cookies, JWTs, OAuth tokens
-**Your Framework:** FastAPI, Flask
+**Your Framework:** FastAPI
 
 ### ✅ Extensible But Opinionated
 **Custom tools** — Extend the `Tool` base class
@@ -107,7 +104,14 @@ All streamed in real-time to your web component.
 
 ## Architecture
 
-![Vanna2 Diagram](img/vanna2.svg)
+```mermaid
+flowchart LR
+    UI["&lt;vanna-chat&gt;"] -->|SSE streaming| API[FastAPI server]
+    UI -.->|Polling fallback| API
+    API --> CH[ChatHandler]
+    CH --> A[User-aware Agent]
+    A --> T[Tools and data sources]
+```
 
 ---
 
@@ -295,8 +299,11 @@ Vanna 2.0 is a complete rewrite focused on user-aware agents and production depl
 
 **Migration path:**
 
-1. **Quick wrap** — Use `LegacyVannaAdapter` to wrap your existing Vanna 0.x instance and get the new web UI immediately
+1. **Quick wrap** — Use `LegacyVannaAdapter` to wrap your existing Vanna 0.x instance and serve it through the FastAPI/SSE stack
 2. **Gradual migration** — Incrementally move to the new Agent API and tools
+
+The adapter preserves Python-side `VannaBase` integrations. It does not provide
+the removed Flask server or Legacy `/api/v0/*` HTTP API.
 
 See the complete [Migration Guide](MIGRATION_GUIDE.md) for step-by-step instructions.
 

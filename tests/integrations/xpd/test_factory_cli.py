@@ -79,6 +79,10 @@ def test_login_template_uses_server_backed_forms():
     assert 'name="email"' in html
     assert 'type="submit" id="loginButton"' in html
     assert '<form method="post" action="/logout"' in html
+    assert 'sse-endpoint="/api/vanna/v2/chat_sse"' in html
+    assert 'poll-endpoint="/api/vanna/v2/chat_poll"' in html
+    assert "ws-endpoint" not in html
+    assert "WebSocket" not in html
     assert "document.cookie" not in html
     assert "admin@example.com</span>" in logged_in
     assert 'id="loginContainer" class="max-w-md' in logged_in
@@ -86,13 +90,12 @@ def test_login_template_uses_server_backed_forms():
 
 
 def test_fastapi_local_login_sets_cookie_and_renders_authenticated_page():
-    from fastapi import FastAPI
     from fastapi.testclient import TestClient
+    from starlette.routing import WebSocketRoute
 
-    from vanna.servers.fastapi.routes import register_chat_routes
+    from vanna.servers.fastapi import VannaFastAPIServer
 
-    app = FastAPI()
-    register_chat_routes(app, None)  # type: ignore[arg-type]
+    app = VannaFastAPIServer(None).create_app()  # type: ignore[arg-type]
     client = TestClient(app)
 
     response = client.post(
@@ -102,30 +105,69 @@ def test_fastapi_local_login_sets_cookie_and_renders_authenticated_page():
     invalid = client.post(
         "/login", data={"email": "unknown@example.com"}, follow_redirects=False
     )
+    health = client.get("/health")
+    route_paths = {route.path for route in app.routes}
 
     assert response.status_code == 303
     assert "admin@example.com" in response.headers["set-cookie"]
     assert "admin@example.com</span>" in authenticated.text
     assert invalid.status_code == 400
+    assert health.json() == {"status": "healthy", "service": "vanna"}
+    assert {
+        "/",
+        "/login",
+        "/logout",
+        "/api/vanna/v2/chat_sse",
+        "/api/vanna/v2/chat_poll",
+        "/health",
+    } <= route_paths
+    assert "/api/vanna/v2/chat_websocket" not in route_paths
+    assert not any(isinstance(route, WebSocketRoute) for route in app.routes)
 
 
-def test_flask_local_login_sets_cookie_and_renders_authenticated_page():
-    from flask import Flask
+def test_fastapi_sse_and_polling_contracts():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
 
-    from vanna.servers.flask.routes import register_chat_routes
+    from vanna.servers.base import ChatResponse, ChatStreamChunk
+    from vanna.servers.fastapi.routes import register_chat_routes
 
-    app = Flask(__name__)
-    register_chat_routes(app, None)  # type: ignore[arg-type]
-    client = app.test_client()
+    class StubChatHandler:
+        @staticmethod
+        def _chunk(request):
+            return ChatStreamChunk(
+                rich={"type": "rich_text", "content": "ok"},
+                simple=None,
+                conversation_id=request.conversation_id or "conv_test",
+                request_id=request.request_id or "req_test",
+            )
 
-    response = client.post(
-        "/login", data={"email": "user@example.com"}, follow_redirects=False
+        async def handle_stream(self, request):
+            yield self._chunk(request)
+
+        async def handle_poll(self, request):
+            return ChatResponse.from_chunks([self._chunk(request)])
+
+    app = FastAPI()
+    register_chat_routes(app, StubChatHandler())  # type: ignore[arg-type]
+    client = TestClient(app)
+
+    sse = client.post(
+        "/api/vanna/v2/chat_sse",
+        json={"message": "hello", "conversation_id": "conv_1"},
     )
-    authenticated = client.get("/")
+    poll = client.post(
+        "/api/vanna/v2/chat_poll",
+        json={"message": "hello", "conversation_id": "conv_1"},
+    )
 
-    assert response.status_code == 303
-    assert "user@example.com" in response.headers["set-cookie"]
-    assert "user@example.com</span>" in authenticated.get_data(as_text=True)
+    assert sse.status_code == 200
+    assert sse.headers["content-type"].startswith("text/event-stream")
+    assert '"conversation_id":"conv_1"' in sse.text
+    assert sse.text.endswith("data: [DONE]\n\n")
+    assert poll.status_code == 200
+    assert poll.json()["conversation_id"] == "conv_1"
+    assert poll.json()["total_chunks"] == 1
 
 
 def _run(awaitable):
@@ -142,14 +184,26 @@ def test_cli_rejects_mixed_modes_and_non_loopback_xpd_host(tmp_path):
     mixed = runner.invoke(
         main, ["--example", "mock_quickstart", "--xpd-config", str(profile)]
     )
-    public = runner.invoke(
-        main, ["--xpd-config", str(profile), "--host", "0.0.0.0"]
-    )
+    public = runner.invoke(main, ["--xpd-config", str(profile), "--host", "0.0.0.0"])
 
     assert mixed.exit_code == 2
     assert "mutually exclusive" in mixed.output
     assert public.exit_code == 2
     assert "local-only" in public.output
+
+
+def test_cli_is_fastapi_only():
+    runner = CliRunner()
+
+    help_result = runner.invoke(main, ["--help"])
+    removed_option = runner.invoke(main, ["--framework", "fastapi"])
+
+    assert help_result.exit_code == 0
+    assert "--framework" not in help_result.output
+    assert "--debug" not in help_result.output
+    assert removed_option.exit_code == 2
+    assert "No such option" in removed_option.output
+    assert "--framework" in removed_option.output
 
 
 def test_xpd_model_payload_is_deterministic_and_serializes_tool_calls():

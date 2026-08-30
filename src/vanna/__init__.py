@@ -155,7 +155,6 @@ __all__ = [
     "MemoryConversationStore",
     "MockLlmService",
     # Server components
-    "VannaFlaskServer",
     "VannaFastAPIServer",
     "ChatHandler",
     "ChatRequest",

@@ -1,8 +1,8 @@
 """
 Server implementations for the Vanna Agents framework.
 
-This module provides Flask and FastAPI server factories for serving
-Vanna agents over HTTP with SSE, WebSocket, and polling endpoints.
+This module provides FastAPI server support for serving Vanna agents over
+HTTP with SSE and polling endpoints.
 """
 
 from .base import ChatHandler, ChatRequest, ChatStreamChunk

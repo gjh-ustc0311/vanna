@@ -5,6 +5,11 @@
 | [![GitHub](https://img.shields.io/badge/GitHub-vanna-blue?logo=github)](https://github.com/vanna-ai/vanna) | [![PyPI](https://img.shields.io/pypi/v/vanna?logo=pypi)](https://pypi.org/project/vanna/) | [![Documentation](https://img.shields.io/badge/Documentation-vanna-blue?logo=read-the-docs)](https://vanna.ai/docs/) | [![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20Vanna%20Guru-006BFF)](https://gurubase.io/g/vanna) |
 
 # Vanna
+
+> Archived reference for the Python-side VannaBase API. The current package no
+> longer includes a Flask server or the Legacy `/api/v0/*` HTTP API. For current
+> server integration, use FastAPI with SSE or polling.
+
 Vanna is an MIT-licensed open-source Python RAG (Retrieval-Augmented Generation) framework for SQL generation and related functionality.
 
 https://github.com/vanna-ai/vanna/assets/7146154/1901f47a-515d-4982-af50-f12761a3b2ce
@@ -32,7 +37,6 @@ These are some of the user interfaces that we've built using Vanna. You can use 
 
 - [Jupyter Notebook](https://vanna.ai/docs/postgres-openai-vanna-vannadb/)
 - [vanna-ai/vanna-streamlit](https://github.com/vanna-ai/vanna-streamlit)
-- [vanna-ai/vanna-flask](https://github.com/vanna-ai/vanna-flask)
 - [vanna-ai/vanna-slack](https://github.com/vanna-ai/vanna-slack)
 
 ## Supported LLMs

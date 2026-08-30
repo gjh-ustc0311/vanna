@@ -458,7 +458,7 @@ class MyStoreMemory(AgentMemory):
 
 ---
 
-## Legacy Compatibility
+## Legacy VannaBase Adapter Compatibility
 
 If you're working on legacy VannaBase compatibility:
 

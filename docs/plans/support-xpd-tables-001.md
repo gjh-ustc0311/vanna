@@ -1,5 +1,8 @@
 # Vanna 支持 XPD 三表实施计划
 
+> 本文记录 001 期实施基线；服务传输层已由
+> [002 精简方案](./support-xpd-tables-002.md) 取代。
+
 ## 1. 实施原则
 
 - 新能力放在独立 `vanna.integrations.xpd` 适配层，避免改变通用 OpenAI、MySQL Runner 和 `RunSqlTool` 的既有行为。

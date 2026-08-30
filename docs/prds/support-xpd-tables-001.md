@@ -1,5 +1,8 @@
 # Vanna 支持 XPD 三表查询 PRD
 
+> 本文记录 001 期需求；服务传输层已由
+> [002 精简方案](./support-xpd-tables-002.md) 收敛为 FastAPI + SSE/Polling。
+
 ## 1. 背景
 
 本需求让 Vanna 直接读取 `xpd-report-agent/configs/app-local.yaml` 中的大模型和 MySQL 连接配置，提供一个可本地运行的 Web/API 数据问答助手。配置仍由 `xpd-report-agent` 管理，Vanna 不复制、不改写、不自动发现该文件。

@@ -2,7 +2,7 @@
 
 本文说明 Vanna 2.0.2 中 FastAPI 版本 `chat_sse` 接口的请求、SSE 响应、后端处理流程、对话历史设计、内置 WebComponent 前端处理方式，以及当前的大数据与文件返回边界。
 
-项目全部 V2 与 Legacy HTTP 接口的索引和公共协议见 [API 总览](./README.md)。
+项目当前 FastAPI HTTP 接口的索引和公共协议见 [API 总览](./README.md)。
 
 > 本文描述的是当前实现。文末的改进建议不代表现有接口已经具备对应能力。
 

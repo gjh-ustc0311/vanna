@@ -35,32 +35,25 @@ export interface ChatResponse {
 export interface ApiClientConfig {
   baseUrl?: string;
   sseEndpoint?: string;
-  wsEndpoint?: string;
   pollEndpoint?: string;
-  timeout?: number;
   customHeaders?: Record<string, string>;
 }
 
 export class VannaApiClient {
   public readonly baseUrl: string;
   private sseEndpoint: string;
-  private wsEndpoint: string;
   private pollEndpoint: string;
-  private timeout: number;
   private customHeaders: Record<string, string>;
 
   constructor(config: ApiClientConfig = {}) {
     this.baseUrl = config.baseUrl || '';
     this.sseEndpoint = config.sseEndpoint || '/api/vanna/v2/chat_sse';
-    this.wsEndpoint = config.wsEndpoint || '/api/vanna/v2/chat_websocket';
     this.pollEndpoint = config.pollEndpoint || '/api/vanna/v2/chat_poll';
-    this.timeout = config.timeout || 30000;
     this.customHeaders = config.customHeaders || {};
 
     console.log('[VannaApiClient] Constructor called with config:', config);
     console.log('[VannaApiClient] Endpoint configuration:');
     console.log('  - SSE endpoint:', this.sseEndpoint, config.sseEndpoint ? '(custom)' : '(default)');
-    console.log('  - WS endpoint:', this.wsEndpoint, config.wsEndpoint ? '(custom)' : '(default)');
     console.log('  - Poll endpoint:', this.pollEndpoint, config.pollEndpoint ? '(custom)' : '(default)');
     console.log('  - Base URL:', this.baseUrl || '(empty)');
   }
@@ -144,119 +137,6 @@ export class VannaApiClient {
     } finally {
       reader.releaseLock();
     }
-  }
-
-  /**
-   * Send message using WebSocket
-   */
-  createWebSocketConnection(): Promise<WebSocket> {
-    return new Promise((resolve, reject) => {
-      let wsUrl: string;
-
-      if (this.wsEndpoint.startsWith('ws://') || this.wsEndpoint.startsWith('wss://')) {
-        // Absolute WebSocket URL provided
-        wsUrl = this.wsEndpoint;
-      } else {
-        // Relative path - construct from baseUrl
-        if (this.baseUrl) {
-          // Parse baseUrl to extract host and convert http(s) to ws(s)
-          const baseUrlObj = new URL(this.baseUrl);
-          const wsProtocol = baseUrlObj.protocol === 'https:' ? 'wss:' : 'ws:';
-          wsUrl = `${wsProtocol}//${baseUrlObj.host}${this.wsEndpoint}`;
-        } else {
-          // Fallback to window.location
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          wsUrl = `${protocol}//${window.location.host}${this.wsEndpoint}`;
-        }
-      }
-
-      const ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => resolve(ws);
-      ws.onerror = (error) => reject(error);
-
-      // Set timeout
-      setTimeout(() => {
-        if (ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-          reject(new Error('WebSocket connection timeout'));
-        }
-      }, this.timeout);
-    });
-  }
-
-  /**
-   * Send message via WebSocket
-   */
-  async sendWebSocketMessage(
-    ws: WebSocket,
-    request: ChatRequest
-  ): Promise<AsyncGenerator<ChatStreamChunk, void, unknown>> {
-    return new Promise((resolve, reject) => {
-      if (ws.readyState !== WebSocket.OPEN) {
-        reject(new Error('WebSocket not connected'));
-        return;
-      }
-
-      async function* generator() {
-        let isCompleted = false;
-        const messageQueue: ChatStreamChunk[] = [];
-        let resolveNext: ((value: IteratorResult<ChatStreamChunk>) => void) | null = null;
-
-        const messageHandler = (event: MessageEvent) => {
-          try {
-            const chunk = JSON.parse(event.data) as ChatStreamChunk;
-
-            if (chunk.rich?.type === 'completion') {
-              isCompleted = true;
-              if (resolveNext) {
-                resolveNext({ done: true, value: undefined });
-                resolveNext = null;
-              }
-              return;
-            }
-
-            if (chunk.rich?.type === 'error') {
-              ws.removeEventListener('message', messageHandler);
-              if (resolveNext) {
-                resolveNext({ done: true, value: undefined });
-              }
-              return;
-            }
-
-            if (resolveNext) {
-              resolveNext({ done: false, value: chunk });
-              resolveNext = null;
-            } else {
-              messageQueue.push(chunk);
-            }
-          } catch (e) {
-            console.warn('Failed to parse WebSocket message:', event.data, e);
-          }
-        };
-
-        ws.addEventListener('message', messageHandler);
-
-        while (!isCompleted) {
-          if (messageQueue.length > 0) {
-            yield messageQueue.shift()!;
-          } else {
-            await new Promise<IteratorResult<ChatStreamChunk>>((resolve) => {
-              resolveNext = resolve;
-            });
-          }
-        }
-
-        ws.removeEventListener('message', messageHandler);
-      }
-
-      try {
-        ws.send(JSON.stringify(request));
-        resolve(generator());
-      } catch (error) {
-        reject(error);
-      }
-    });
   }
 
   /**

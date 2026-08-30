@@ -7,7 +7,7 @@ import traceback
 from typing import Any, AsyncGenerator, Dict, Optional
 from urllib.parse import parse_qs, unquote
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from ..base import ChatHandler, ChatRequest, ChatResponse
@@ -110,87 +110,6 @@ def register_chat_routes(
                 "X-Accel-Buffering": "no",  # Disable nginx buffering
             },
         )
-
-    @app.websocket("/api/vanna/v2/chat_websocket")
-    async def chat_websocket(websocket: WebSocket) -> None:
-        """WebSocket endpoint for real-time chat."""
-        await websocket.accept()
-
-        try:
-            while True:
-                # Receive message
-                try:
-                    data = await websocket.receive_json()
-
-                    # Extract request context for user resolution
-                    metadata = data.get("metadata", {})
-                    data["request_context"] = RequestContext(
-                        cookies=dict(websocket.cookies),
-                        headers=dict(websocket.headers),
-                        remote_addr=websocket.client.host if websocket.client else None,
-                        query_params=dict(websocket.query_params),
-                        metadata=metadata,
-                    )
-
-                    chat_request = ChatRequest(**data)
-                except Exception as e:
-                    traceback.print_stack()
-                    traceback.print_exc()
-                    await websocket.send_json(
-                        {
-                            "type": "error",
-                            "data": {"message": f"Invalid request: {str(e)}"},
-                        }
-                    )
-                    continue
-
-                # Stream response
-                try:
-                    async for chunk in chat_handler.handle_stream(chat_request):
-                        await websocket.send_json(chunk.model_dump())
-
-                    # Send completion signal
-                    await websocket.send_json(
-                        {
-                            "type": "completion",
-                            "data": {"status": "done"},
-                            "conversation_id": chunk.conversation_id
-                            if "chunk" in locals()
-                            else "",
-                            "request_id": chunk.request_id
-                            if "chunk" in locals()
-                            else "",
-                        }
-                    )
-
-                except Exception as e:
-                    traceback.print_stack()
-                    traceback.print_exc()
-                    await websocket.send_json(
-                        {
-                            "type": "error",
-                            "data": {"message": str(e)},
-                            "conversation_id": chat_request.conversation_id or "",
-                            "request_id": chat_request.request_id or "",
-                        }
-                    )
-
-        except WebSocketDisconnect:
-            pass
-        except Exception as e:
-            traceback.print_stack()
-            traceback.print_exc()
-            try:
-                await websocket.send_json(
-                    {
-                        "type": "error",
-                        "data": {"message": f"WebSocket error: {str(e)}"},
-                    }
-                )
-            except Exception:
-                pass
-            finally:
-                await websocket.close()
 
     @app.post("/api/vanna/v2/chat_poll")
     async def chat_poll(

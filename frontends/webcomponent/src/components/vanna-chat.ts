@@ -715,7 +715,6 @@ export class VannaChat extends LitElement {
   @property({ reflect: true }) theme = 'light';
   @property({ attribute: 'api-base' }) apiBaseUrl = '';
   @property({ attribute: 'sse-endpoint' }) sseEndpoint = '/api/vanna/v2/chat_sse';
-  @property({ attribute: 'ws-endpoint' }) wsEndpoint = '/api/vanna/v2/chat_websocket';
   @property({ attribute: 'poll-endpoint' }) pollEndpoint = '/api/vanna/v2/chat_poll';
   @property() subtitle = '';
   @property() startingState: 'normal' | 'maximized' | 'minimized' = 'normal';
@@ -759,14 +758,12 @@ export class VannaChat extends LitElement {
     console.log('[VannaChat] Creating API client with:', {
       baseUrl: this.apiBaseUrl,
       sseEndpoint: this.sseEndpoint,
-      wsEndpoint: this.wsEndpoint,
       pollEndpoint: this.pollEndpoint
     });
 
     this.apiClient = new VannaApiClient({
       baseUrl: this.apiBaseUrl,
       sseEndpoint: this.sseEndpoint,
-      wsEndpoint: this.wsEndpoint,
       pollEndpoint: this.pollEndpoint
     });
   }

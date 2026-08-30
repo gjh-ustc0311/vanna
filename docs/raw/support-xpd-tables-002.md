@@ -1,11 +1,16 @@
 # 精简项目
 
-查阅 /Users/gjh/workspace/xpd/xpd-report-agent 项目，设计方案：
+精简项目：
+- 剔除 Legacy Flask API 的支持
+- 剔除 Flask 支持
+- 剔除 chat_websocket 支持
 
-1、本项目支持 xpd-report-agent 中的数据库表
-2、本项目支持 configs/app-local.yaml 的大模型和数据库配置
+需：
+- 剔除无关的代码和依赖
+- 同步更新文档
+- 删除空目录
 
 ## 文档目录
-- prd 文档：完善的prd 写到 ./docs-dev/prds 目录
-- plan 文档：设计文档 写到 ./docs-dev/plans 目录
-- 架构 / 代码 文档：./docs-dev/archs 目录
+- prd 文档：完善的prd 写到 ./docs/prds 目录
+- plan 文档：设计文档 写到 ./docs/plans 目录
+- 架构 / 代码 文档：./docs/archs 目录

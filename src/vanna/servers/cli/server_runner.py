@@ -5,7 +5,7 @@ CLI for running Vanna Agents servers with example agents.
 import importlib
 import json
 from pathlib import Path
-from typing import Dict, Optional, Any, cast, TextIO, Union
+from typing import Dict, Optional, Any, cast, TextIO
 
 import click
 
@@ -73,12 +73,6 @@ class ExampleAgentLoader:
 
 
 @click.command()
-@click.option(
-    "--framework",
-    type=click.Choice(["flask", "fastapi"]),
-    default="fastapi",
-    help="Web framework to use",
-)
 @click.option("--port", default=8000, help="Port to run server on")
 @click.option(
     "--host",
@@ -104,7 +98,6 @@ class ExampleAgentLoader:
     default=None,
     help="Explicit xpd-report-agent schema v4 local YAML profile",
 )
-@click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option(
     "--dev",
     is_flag=True,
@@ -119,14 +112,12 @@ class ExampleAgentLoader:
     help="CDN URL for web components",
 )
 def main(
-    framework: str,
     port: int,
     host: Optional[str],
     example: Optional[str],
     list_examples: bool,
     config: Optional[click.File],
     xpd_config: Optional[Path],
-    debug: bool,
     dev: bool,
     static_folder: Optional[str],
     cdn_url: str,
@@ -179,9 +170,7 @@ def main(
 
             settings = load_xpd_profile(xpd_config)
             agent = create_xpd_agent(settings)
-            click.echo(
-                "✓ Loaded XPD local profile and verified the three-table schema"
-            )
+            click.echo("✓ Loaded XPD local profile and verified the three-table schema")
         except XpdError as e:
             raise click.ClickException(str(e)) from e
         except ImportError as e:
@@ -212,38 +201,22 @@ def main(
             click.echo(f"Error: Could not create basic agent: {e}", err=True)
             return
 
-    from ..flask.app import VannaFlaskServer
     from ..fastapi.app import VannaFastAPIServer
 
-    # Create and run server
-    server: Union[VannaFlaskServer, VannaFastAPIServer]
-    if framework == "flask":
-        server = VannaFlaskServer(agent, config=server_config)
-        click.echo(f"🚀 Starting Flask server on http://{host}:{port}")
-        if dev:
-            click.echo(
-                f"📦 Development mode: loading web components from ./{static_folder}/"
-            )
-        else:
-            click.echo(f"🌍 Production mode: loading web components from CDN")
-        try:
-            server.run(host=host, port=port, debug=debug)
-        except KeyboardInterrupt:
-            click.echo("\n👋 Server stopped")
+    # Create and run the FastAPI server
+    server = VannaFastAPIServer(agent, config=server_config)
+    click.echo(f"🚀 Starting FastAPI server on http://{host}:{port}")
+    click.echo(f"📖 API docs available at http://{host}:{port}/docs")
+    if dev:
+        click.echo(
+            f"📦 Development mode: loading web components from ./{static_folder}/"
+        )
     else:
-        server = VannaFastAPIServer(agent, config=server_config)
-        click.echo(f"🚀 Starting FastAPI server on http://{host}:{port}")
-        click.echo(f"📖 API docs available at http://{host}:{port}/docs")
-        if dev:
-            click.echo(
-                f"📦 Development mode: loading web components from ./{static_folder}/"
-            )
-        else:
-            click.echo(f"🌍 Production mode: loading web components from CDN")
-        try:
-            server.run(host=host, port=port)
-        except KeyboardInterrupt:
-            click.echo("\n👋 Server stopped")
+        click.echo("🌍 Production mode: loading web components from CDN")
+    try:
+        server.run(host=host, port=port)
+    except KeyboardInterrupt:
+        click.echo("\n👋 Server stopped")
 
 
 if __name__ == "__main__":

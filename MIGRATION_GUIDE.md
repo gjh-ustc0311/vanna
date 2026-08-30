@@ -27,7 +27,7 @@ Vanna 2.0+ represents a fundamental architectural shift from a simple LLM wrappe
 - ✅ **Rich UI components** - Tables, charts, status cards (not just text)
 - ✅ **Streaming by default** - Progressive responses via SSE
 - ✅ **Enterprise features** - Audit logs, rate limiting, observability
-- ✅ **FastAPI/Flask servers** - Production-ready backends included
+- ✅ **FastAPI server** - Production-ready SSE and polling endpoints included
 
 ### What Changed from 0.x
 - ❌ Direct method calls (`vn.ask()`) → Agent-based workflow
@@ -86,7 +86,7 @@ server.run(host='0.0.0.0', port=8000)
 #### Step 1: Install Vanna 2.0+
 
 ```bash
-pip install 'vanna[flask,anthropic]'
+pip install 'vanna[fastapi,anthropic]'
 ```
 
 #### Step 2: Wrap Your Existing VannaBase Instance
@@ -150,6 +150,10 @@ if __name__ == "__main__":
 - Exposes training data from `vn.get_training_data()` as searchable memory (via `search_saved_correct_tool_uses` tool)
 - Optionally allows saving new training data (via `save_question_tool_args` tool - admin only)
 - Maintains your existing database connection and training data
+
+The adapter only bridges Python-side `VannaBase` behavior into the Agent tool
+system. The Flask server, Legacy `/api/v0/*` HTTP API, and V2 WebSocket endpoint
+have been removed; migrate HTTP clients to FastAPI SSE or polling.
 
 **Pros:**
 - ✅ Minimal code changes

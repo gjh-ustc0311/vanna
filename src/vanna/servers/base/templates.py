@@ -202,7 +202,6 @@ def get_index_html(
                 <vanna-chat
                     api-base="{api_base_url}"
                     sse-endpoint="{api_base_url}/api/vanna/v2/chat_sse"
-                    ws-endpoint="{api_base_url}/api/vanna/v2/chat_websocket"
                     poll-endpoint="{api_base_url}/api/vanna/v2/chat_poll">
                 </vanna-chat>
             </div>
@@ -212,9 +211,6 @@ def get_index_html(
                 <ul class="space-y-2">
                     <li class="p-2 bg-vanna-cream/50 rounded font-mono text-sm">
                         <span class="font-bold text-vanna-teal mr-2">POST</span>{api_base_url}/api/vanna/v2/chat_sse - Server-Sent Events streaming
-                    </li>
-                    <li class="p-2 bg-vanna-cream/50 rounded font-mono text-sm">
-                        <span class="font-bold text-vanna-teal mr-2">WS</span>{api_base_url}/api/vanna/v2/chat_websocket - WebSocket real-time chat
                     </li>
                     <li class="p-2 bg-vanna-cream/50 rounded font-mono text-sm">
                         <span class="font-bold text-vanna-teal mr-2">POST</span>{api_base_url}/api/vanna/v2/chat_poll - Request/response polling

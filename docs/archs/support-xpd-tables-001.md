@@ -1,5 +1,8 @@
 # Vanna XPD 三表适配层架构与代码设计
 
+> 本文记录 001 期架构；服务传输层已由
+> [002 精简方案](./support-xpd-tables-002.md) 收敛为 FastAPI + SSE/Polling。
+
 ## 1. 架构边界
 
 XPD 能力是一个独立适配层。它复用 Vanna 的 Agent、ToolRegistry、Web/API Server、内存会话和 UI 组件，但不复用通用 `MySQLRunner` 或会写 CSV 的 `RunSqlTool`。这样只读、限时、限行和同回合 Schema 门禁不会被通用能力绕过。
