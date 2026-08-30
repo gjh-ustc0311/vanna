@@ -159,6 +159,9 @@ def main(
             "static_folder": static_folder,
             "cdn_url": cdn_url,
             "api_base_url": "",  # Can be overridden in config file
+            # Reserved internal marker: only the explicit XPD startup path may
+            # enable full client-boundary request/response logging.
+            "_xpd_chat_sse_logging": xpd_config is not None,
         }
     )
 

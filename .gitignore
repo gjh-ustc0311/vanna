@@ -26,3 +26,9 @@ frontends/**/static/
 frontends/**/.storybook-static/
 frontends/**/package-lock.json
 frontends/**/.mypy_cache/
+
+# Runtime logs
+logs/*.log*
+
+# Runtime conversation history
+/datas/history_storage/

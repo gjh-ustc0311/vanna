@@ -9,6 +9,7 @@ from vanna.core.user.request_context import RequestContext
 from vanna.integrations.xpd import factory
 from vanna.integrations.xpd.factory import FixedLocalXpdUserResolver
 from vanna.integrations.xpd.llm import XpdOpenAILlmService
+from vanna.integrations.local import FileSystemConversationStore
 from vanna.servers.cli.server_runner import main
 
 
@@ -31,8 +32,9 @@ class DummyCatalog:
 
 
 def test_factory_registers_only_two_group_restricted_tools(
-    monkeypatch, profile_settings, schema_evidence
+    monkeypatch, tmp_path, profile_settings, schema_evidence
 ):
+    monkeypatch.chdir(tmp_path)
     DummyCatalog.evidence_value = schema_evidence
     monkeypatch.setattr(factory, "XpdSchemaCatalog", DummyCatalog)
     monkeypatch.setattr(factory, "XpdOpenAILlmService", lambda **kwargs: DummyLlm())
@@ -47,6 +49,8 @@ def test_factory_registers_only_two_group_restricted_tools(
     schemas = _run(agent.tool_registry.get_schemas())
     assert all(schema.access_groups == ["xpd"] for schema in schemas)
     assert agent.config.temperature == 0
+    assert isinstance(agent.conversation_store, FileSystemConversationStore)
+    assert agent.conversation_store.base_dir == Path("datas/history_storage")
 
 
 def test_local_xpd_resolver_maps_admin_cookie_to_xpd_admin():
@@ -240,6 +244,7 @@ def test_cli_uses_loopback_default_for_xpd_mode(monkeypatch, tmp_path):
     class FakeServer:
         def __init__(self, agent, config):
             captured["agent"] = agent
+            captured["config"] = config
 
         def run(self, host, port):
             captured.update(host=host, port=port)
@@ -253,3 +258,30 @@ def test_cli_uses_loopback_default_for_xpd_mode(monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 8000
+    assert captured["config"]["_xpd_chat_sse_logging"] is True
+
+
+def test_cli_does_not_enable_xpd_logging_for_example_mode(monkeypatch):
+    from vanna.servers.cli import server_runner
+    from vanna.servers.fastapi import app as fastapi_app
+
+    captured = {}
+
+    class FakeServer:
+        def __init__(self, agent, config):
+            captured["config"] = config
+
+        def run(self, host, port):
+            captured.update(host=host, port=port)
+
+    monkeypatch.setattr(
+        server_runner.ExampleAgentLoader,
+        "load_example_agent",
+        lambda example_name: object(),
+    )
+    monkeypatch.setattr(fastapi_app, "VannaFastAPIServer", FakeServer)
+
+    result = CliRunner().invoke(main, ["--example", "mock_quickstart"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["config"]["_xpd_chat_sse_logging"] is False

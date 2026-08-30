@@ -10,7 +10,7 @@ from vanna.core import Agent, AgentConfig, DefaultSystemPromptBuilder, ToolRegis
 from vanna.core.user import User
 from vanna.core.user.request_context import RequestContext
 from vanna.core.user.resolver import UserResolver
-from vanna.integrations.local import MemoryConversationStore
+from vanna.integrations.local import FileSystemConversationStore
 from vanna.integrations.local.agent_memory import DemoAgentMemory
 
 from .config import XpdProfileSettings
@@ -19,6 +19,10 @@ from .runner import XpdReadOnlyRunner
 from .schema import XpdSchemaCatalog
 from .sql_guard import XpdSqlGuard
 from .tools import RunXpdSqlTool, SearchXpdSchemaTool
+
+
+XPD_HISTORY_STORAGE_DIR = "datas/history_storage"
+XPD_CONVERSATION_ID_PATTERN = r"[A-Za-z0-9_-]{1,128}"
 
 
 XPD_SYSTEM_PROMPT = """你是一个本地、只读的 XPD 数据分析助手。
@@ -93,16 +97,17 @@ def create_xpd_agent(
         tool_registry=registry,
         user_resolver=user_resolver or FixedLocalXpdUserResolver(),
         agent_memory=memory,
-        conversation_store=MemoryConversationStore(),
+        conversation_store=FileSystemConversationStore(
+            base_dir=XPD_HISTORY_STORAGE_DIR,
+            conversation_id_pattern=XPD_CONVERSATION_ID_PATTERN,
+        ),
         config=AgentConfig(
             max_tool_iterations=6,
             stream_responses=True,
             auto_save_conversations=True,
             temperature=0,
         ),
-        system_prompt_builder=DefaultSystemPromptBuilder(
-            base_prompt=XPD_SYSTEM_PROMPT
-        ),
+        system_prompt_builder=DefaultSystemPromptBuilder(base_prompt=XPD_SYSTEM_PROMPT),
     )
     # Intentionally process-local: useful for readiness introspection without adding
     # a public server dependency or persisting any profile/schema contents.

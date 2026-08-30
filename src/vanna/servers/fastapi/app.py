@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from ...core import Agent
 from ..base import ChatHandler
 from .routes import register_chat_routes
+from .xpd_logging import configure_xpd_chat_sse_logger
 
 
 class VannaFastAPIServer:
@@ -69,8 +70,17 @@ class VannaFastAPIServer:
             except Exception:
                 pass  # Static files not available
 
-        # Register routes
-        register_chat_routes(app, self.chat_handler, self.config)
+        # Register routes. XPD client-boundary logging is deliberately enabled
+        # only by the private marker set by the XPD CLI path.
+        chat_sse_logger = None
+        if self.config.get("_xpd_chat_sse_logging", False):
+            chat_sse_logger = configure_xpd_chat_sse_logger()
+        register_chat_routes(
+            app,
+            self.chat_handler,
+            self.config,
+            chat_sse_logger=chat_sse_logger,
+        )
 
         # Add health check
         @app.get("/health")

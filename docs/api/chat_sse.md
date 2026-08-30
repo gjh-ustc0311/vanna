@@ -405,9 +405,9 @@ RunSql 的工具历史保存的是 `result_for_llm`：CSV 文本超过 1000 个�
 
 因此，自定义 Store 不能假设 `update_conversation()` 只更新已存在记录；它必须能够安全地创建新记录，并在写入时再次校验所有权。
 
-两个内置 Store 都以 `conversation_id` 作为全局键或目录名，而不是以 `(user_id, conversation_id)` 作为复合键。读取时虽会检查 `user.id`，但 `create/update` 没有接收当前用户参数，也没有在覆盖前做所有权校验。若不同用户碰撞到同一个 ID，存在覆盖元数据或混入消息的风险。客户端应生成不可预测的高熵 ID，生产 Store 则应使用 `(tenant_id, user_id, conversation_id)` 唯一约束，并在每次读写时执行服务端所有权校验。
+两个内置 Store 都以 `conversation_id` 作为全局键或目录名，而不是以 `(user_id, conversation_id)` 作为复合键。`MemoryConversationStore` 读取时会检查 `user.id`，但写入时不会复核已有记录的所有权。`FileSystemConversationStore` 会在覆盖已有元数据前核对所有者，不同用户不能写入同一个 ID。客户端仍应生成不可预测的高熵 ID；生产 Store 建议使用 `(tenant_id, user_id, conversation_id)` 唯一约束，并在每次读写时执行服务端所有权校验。
 
-此外，`FileSystemConversationStore` 会把 `conversation_id` 直接拼接为目录路径，当前没有字符白名单或路径穿越校验。不要将不可信的任意字符串直接用于该实现；生产环境应在 Handler 或 Store 边界验证 ID 格式。
+`FileSystemConversationStore` 会把解析后的会话目录限制为 `base_dir` 的直接子目录，从而拒绝绝对路径、嵌套路径、路径穿越和指向目录外的符号链接。构造 Store 时还可以传入 `conversation_id_pattern`，对 ID 执行正则完整匹配。XPD 使用 `[A-Za-z0-9_-]{1,128}`；其他调用方也应根据自己的 ID 格式配置白名单。
 
 ### 5.3 生命周期与保存时机
 
@@ -459,11 +459,12 @@ Filter 原则上只应生成“本次发送给 LLM 的视图”，不应改变�
 
 | 特性 | `MemoryConversationStore` | `FileSystemConversationStore` |
 | --- | --- | --- |
-| 默认使用 | Agent 未传 Store 时使用 | 需要显式注入 |
+| 默认使用 | Agent 未传 Store 时使用 | 需要显式注入；XPD Factory 已默认注入 |
 | 生命周期 | Agent 实例/进程内 | 本地磁盘持久化 |
 | 数据布局 | `dict[conversation_id]` | 每个会话一个目录 |
 | 多进程共享 | 不支持 | 共用磁盘时可见，但没有并发协调 |
 | 更新语义 | 保存并返回同一个可变对象引用 | 只追加相对现有消息数量新增的尾部文件 |
+| ID 与写入保护 | 无格式限制，写入不复核已有所有者 | 目录 containment；可选 ID 正则；覆盖前复核已有所有者 |
 | Conversation `metadata` | 保留 | 当前不写入 `metadata.json`，重载后丢失 |
 | 并发保护 | 无锁、无版本控制 | 无锁、无事务、非原子写入 |
 | 清理策略 | 无 TTL，进程结束即清空 | 无 TTL、容量配额或自动清理 |
@@ -486,7 +487,10 @@ conversations/
 from vanna.core import Agent, AgentConfig
 from vanna.integrations.local import FileSystemConversationStore
 
-store = FileSystemConversationStore(base_dir="./conversations")
+store = FileSystemConversationStore(
+    base_dir="./conversations",
+    conversation_id_pattern=r"[A-Za-z0-9_-]{1,128}",
+)
 
 agent = Agent(
     llm_service=llm_service,
@@ -497,6 +501,8 @@ agent = Agent(
     config=AgentConfig(auto_save_conversations=True),
 )
 ```
+
+XPD 的 `create_xpd_agent()` 已默认启用 File Store，目录固定为当前工作目录下的 `datas/history_storage`。服务重启后，只要客户端继续提交同一个合法 `conversation_id`，后端就会加载已有消息作为 LLM 上下文。该行为不提供前端历史列表或 Rich Component 回放；内置 WebComponent 刷新后仍会生成新 ID。
 
 生产环境建议实现数据库 Store，并至少具备：复合所有权约束、写入时鉴权、乐观锁或版本号、同会话串行化、事务/原子追加、索引分页、保留期限、删除能力、静态加密和审计。当前 Agent 没有按 Conversation 加锁；同一 ID 的并发请求可能基于同一旧版本生成结果并相互覆盖或重复追加。
 
@@ -612,8 +618,8 @@ const displayedData = data.slice(0, max_rows_displayed); // 默认 100
 | 默认 Memory Store 只在单个 Agent 进程内保存 | 重启后丢失，多 Worker 之间历史不一致 | 生产环境注入共享、持久化的数据库 Store。 |
 | V2 没有会话列表、详情、删除和前端 hydration API | 后端可续接 LLM 上下文，但用户刷新页面后不能查看或恢复旧聊天 UI | 增加鉴权历史 API，并由前端持久化 ID、加载和分页渲染。 |
 | 默认没有历史条数或 token 上限 | 长会话可能超过模型上下文窗口或显著增加延迟和费用 | 配置 ConversationFilter，对旧消息裁剪、摘要或分层归档。 |
-| 内置 Store 使用全局会话 ID，写入时不复核所有权 | ID 碰撞时可能覆盖其他用户会话或混入消息 | 使用用户复合键、高熵 ID，并在每次写入时校验所有权。 |
-| File Store 未校验 ID 路径，且只追加消息尾部 | 存在路径安全风险，已有消息的修改/删除无法可靠落盘 | 限制 ID 格式；生产环境改用具备事务语义的 Store。 |
+| Memory Store 使用全局会话 ID，写入时不复核所有权 | ID 碰撞时可能覆盖其他用户会话或混入消息 | 使用用户复合键、高熵 ID，并在每次写入时校验所有权。 |
+| File Store 只追加消息尾部 | 已有消息的修改、删除或重排无法可靠落盘 | 生产环境改用具备事务语义的 Store。 |
 | 同一 Conversation 没有锁、版本号或事务 | 并发请求可能丢失更新、乱序或重复追加 | 使用乐观锁/版本号，或按会话串行处理。 |
 
 ### 推荐的大数据返回模式

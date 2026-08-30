@@ -2,6 +2,7 @@
 
 > 本文记录 001 期需求；服务传输层已由
 > [002 精简方案](./support-xpd-tables-002.md) 收敛为 FastAPI + SSE/Polling。
+> 后续变更已为 XPD 增加 `datas/history_storage` 本地会话存储；本文件中“持久化历史/任何文件落盘”仍保留为 001 期原始范围描述，不代表当前运行时行为。
 
 ## 1. 背景
 

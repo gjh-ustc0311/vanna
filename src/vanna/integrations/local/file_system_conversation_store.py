@@ -6,9 +6,9 @@ interface that persists conversations to disk as a directory structure.
 """
 
 import json
-import os
+import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional, Pattern
 from datetime import datetime
 import time
 
@@ -26,18 +26,37 @@ class FileSystemConversationStore(ConversationStore):
             {timestamp}_{index}.json - individual message files
     """
 
-    def __init__(self, base_dir: str = "conversations") -> None:
+    def __init__(
+        self,
+        base_dir: str = "conversations",
+        *,
+        conversation_id_pattern: Optional[str] = None,
+    ) -> None:
         """Initialize the file system conversation store.
 
         Args:
             base_dir: Base directory for storing conversations
+            conversation_id_pattern: Optional full-match regex for conversation IDs
         """
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._resolved_base_dir = self.base_dir.resolve()
+        self._conversation_id_pattern: Optional[Pattern[str]] = (
+            re.compile(conversation_id_pattern) if conversation_id_pattern else None
+        )
 
     def _get_conversation_dir(self, conversation_id: str) -> Path:
         """Get the directory path for a conversation."""
-        return self.base_dir / conversation_id
+        if not conversation_id or (
+            self._conversation_id_pattern is not None
+            and self._conversation_id_pattern.fullmatch(conversation_id) is None
+        ):
+            raise ValueError("Invalid conversation ID")
+
+        conversation_dir = (self.base_dir / conversation_id).resolve()
+        if conversation_dir.parent != self._resolved_base_dir:
+            raise ValueError("Invalid conversation ID")
+        return conversation_dir
 
     def _get_metadata_path(self, conversation_id: str) -> Path:
         """Get the metadata file path for a conversation."""
@@ -52,6 +71,17 @@ class FileSystemConversationStore(ConversationStore):
         conv_dir = self._get_conversation_dir(conversation.id)
         conv_dir.mkdir(parents=True, exist_ok=True)
 
+        metadata_path = self._get_metadata_path(conversation.id)
+        if metadata_path.exists():
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    existing_metadata = json.load(f)
+                existing_user_id = existing_metadata["user"]["id"]
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                raise ValueError("Existing conversation metadata is invalid") from e
+            if existing_user_id != conversation.user.id:
+                raise PermissionError("Conversation is owned by a different user")
+
         metadata = {
             "id": conversation.id,
             "user": conversation.user.model_dump(mode="json"),
@@ -59,9 +89,8 @@ class FileSystemConversationStore(ConversationStore):
             "updated_at": conversation.updated_at.isoformat(),
         }
 
-        metadata_path = self._get_metadata_path(conversation.id)
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
 
     def _load_messages(self, conversation_id: str) -> List[Message]:
         """Load all messages for a conversation."""
@@ -76,7 +105,7 @@ class FileSystemConversationStore(ConversationStore):
 
         for file_path in message_files:
             try:
-                with open(file_path, "r") as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 message = Message.model_validate(data)
                 messages.append(message)
@@ -98,8 +127,13 @@ class FileSystemConversationStore(ConversationStore):
         filename = f"{timestamp}_{index:06d}.json"
         file_path = messages_dir / filename
 
-        with open(file_path, "w") as f:
-            json.dump(message.model_dump(mode="json"), f, indent=2)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(
+                message.model_dump(mode="json"),
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
 
     async def create_conversation(
         self, conversation_id: str, user: User, initial_message: str
@@ -130,7 +164,7 @@ class FileSystemConversationStore(ConversationStore):
 
         try:
             # Load metadata
-            with open(metadata_path, "r") as f:
+            with open(metadata_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
 
             # Verify ownership
@@ -219,13 +253,14 @@ class FileSystemConversationStore(ConversationStore):
             if not conv_dir.is_dir():
                 continue
 
-            metadata_path = conv_dir / "metadata.json"
-            if not metadata_path.exists():
-                continue
-
             try:
+                safe_conv_dir = self._get_conversation_dir(conv_dir.name)
+                metadata_path = safe_conv_dir / "metadata.json"
+                if not metadata_path.exists():
+                    continue
+
                 # Load metadata
-                with open(metadata_path, "r") as f:
+                with open(metadata_path, "r", encoding="utf-8") as f:
                     metadata = json.load(f)
 
                 # Skip conversations not owned by this user

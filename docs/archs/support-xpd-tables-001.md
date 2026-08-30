@@ -5,7 +5,7 @@
 
 ## 1. 架构边界
 
-XPD 能力是一个独立适配层。它复用 Vanna 的 Agent、ToolRegistry、Web/API Server、内存会话和 UI 组件，但不复用通用 `MySQLRunner` 或会写 CSV 的 `RunSqlTool`。这样只读、限时、限行和同回合 Schema 门禁不会被通用能力绕过。
+XPD 能力是一个独立适配层。它复用 Vanna 的 Agent、ToolRegistry、Web/API Server、本地文件会话和 UI 组件，但不复用通用 `MySQLRunner` 或会写 CSV 的 `RunSqlTool`。这样只读、限时、限行和同回合 Schema 门禁不会被通用能力绕过。
 
 ```mermaid
 flowchart LR
@@ -14,6 +14,7 @@ flowchart LR
     P[显式 app-local.yaml] --> C[严格配置加载器]
     C --> A
     A --> ST[search_xpd_schema]
+    A --> H[本地会话历史\ndatas/history_storage]
     ST --> E[三表 Schema Evidence\nxpd-core-v1]
     E --> CTX[同回合 ToolContext marker]
     A --> QT[run_xpd_sql]
@@ -34,7 +35,8 @@ flowchart LR
 4. Catalog 一次连接读取四组 `INFORMATION_SCHEMA` 元数据，验证三张 `BASE TABLE`，构建并缓存证据。
 5. Web Server 通过 `/login` 校验两个演示身份、设置 Cookie 并重定向，由服务端直接渲染登录态；`/logout` 删除 Cookie。该流程不依赖 JavaScript，但仍只是本地演示角色选择器。
 6. Factory 基于同一证据创建 Guard、Runner 和两个 Tool，再创建仅接受本地演示 Cookie 的用户解析器：两个演示身份都有 `xpd` 组，`admin@example.com` 额外具有 `admin` 组。
-6. 只有以上步骤全部成功，CLI 才实例化并启动 Web/API Server。
+7. Factory 创建以 `datas/history_storage` 为工作目录相对路径的 File Store，并只接受 `[A-Za-z0-9_-]{1,128}` 格式的会话 ID。已存在会话的所有者不匹配时拒绝覆盖。
+8. 只有以上步骤全部成功，CLI 才实例化并启动 Web/API Server。
 
 预检失败是 fail-closed：不存在“先启动、首个请求再发现表不可用”的降级路径。
 
@@ -109,8 +111,8 @@ Runner 的执行顺序固定：
 | `xpd_database_unavailable` | 查询开始前连接重试耗尽 |
 | `xpd_query_failed` | 查询执行阶段的其他失败 |
 
-底层异常仅作为 Python exception chain 保留给进程内调试，不拼入工具结果。适配层不记录 SQL、profile、密钥或完整结果。
+底层异常仅作为 Python exception chain 保留给进程内调试，不拼入工具结果。XPD `chat_sse` 会把接收的请求和发给客户端的全部消息记录到 `logs/xpd-chat.log`，其中可能包含问题、SQL 或查询结果，部署时必须限制日志文件访问权限；profile 密钥不会作为请求字段进入该日志。Conversation Store 会把用户、Assistant 和 Tool 消息写入 `datas/history_storage`，用于客户端复用同一会话 ID 时恢复后端上下文；它不持久化 Rich Component 树，也不提供前端历史回放。
 
 ## 9. 扩展约束
 
-后续如需增加表、JOIN 或指标，必须升级契约版本并同时更新 Schema 证据、Guard 测试和验收用例。若要支持公网、多用户或生产环境，必须另行设计认证、授权、RLS、审计、速率限制和持久化策略，不能通过放宽当前 CLI 回环限制来完成。
+后续如需增加表、JOIN 或指标，必须升级契约版本并同时更新 Schema 证据、Guard 测试和验收用例。若要支持公网、多用户或生产环境，必须另行设计认证、授权、RLS、审计、速率限制以及共享且具备并发控制的持久化策略，不能通过放宽当前 CLI 回环限制来完成。

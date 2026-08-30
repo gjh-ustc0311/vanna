@@ -4,6 +4,8 @@ FastAPI route implementations for Vanna Agents.
 
 import json
 import traceback
+import uuid
+from logging import Logger
 from typing import Any, AsyncGenerator, Dict, Optional
 from urllib.parse import parse_qs, unquote
 
@@ -13,13 +15,18 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from ..base import ChatHandler, ChatRequest, ChatResponse
 from ..base.templates import get_index_html
 from ...core.user.request_context import RequestContext
+from .xpd_logging import log_xpd_chat_sse_event
 
 
 _LOCAL_DEMO_EMAILS = {"admin@example.com", "user@example.com"}
 
 
 def register_chat_routes(
-    app: FastAPI, chat_handler: ChatHandler, config: Optional[Dict[str, Any]] = None
+    app: FastAPI,
+    chat_handler: ChatHandler,
+    config: Optional[Dict[str, Any]] = None,
+    *,
+    chat_sse_logger: Optional[Logger] = None,
 ) -> None:
     """Register chat routes on FastAPI app.
 
@@ -27,6 +34,7 @@ def register_chat_routes(
         app: FastAPI application
         chat_handler: Chat handler instance
         config: Server configuration
+        chat_sse_logger: Optional logger enabled only for the XPD SSE endpoint
     """
     config = config or {}
 
@@ -74,6 +82,20 @@ def register_chat_routes(
         chat_request: ChatRequest, http_request: Request
     ) -> StreamingResponse:
         """Server-Sent Events endpoint for streaming chat."""
+        request_payload = None
+        if chat_sse_logger is not None:
+            request_payload = chat_request.model_dump(
+                mode="json",
+                exclude={"request_context"},
+                exclude_unset=True,
+            )
+            # Resolve IDs before logging so the request event and every outbound
+            # frame share the same correlation values. ChatHandler will reuse them.
+            chat_request.conversation_id = (
+                chat_request.conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
+            )
+            chat_request.request_id = chat_request.request_id or str(uuid.uuid4())
+
         # Extract request context for user resolution
         chat_request.request_context = RequestContext(
             cookies=dict(http_request.cookies),
@@ -83,12 +105,44 @@ def register_chat_routes(
             metadata=chat_request.metadata,
         )
 
+        path = http_request.url.path
+        if chat_sse_logger is not None:
+            log_xpd_chat_sse_event(
+                chat_sse_logger,
+                event="xpd.chat.request",
+                path=path,
+                conversation_id=chat_request.conversation_id or "",
+                request_id=chat_request.request_id or "",
+                message_type="request",
+                payload=request_payload,
+            )
+
         async def generate() -> AsyncGenerator[str, None]:
             """Generate SSE stream."""
             try:
                 async for chunk in chat_handler.handle_stream(chat_request):
                     chunk_json = chunk.model_dump_json()
+                    if chat_sse_logger is not None:
+                        log_xpd_chat_sse_event(
+                            chat_sse_logger,
+                            event="xpd.chat.response",
+                            path=path,
+                            conversation_id=chunk.conversation_id,
+                            request_id=chunk.request_id,
+                            message_type="chunk",
+                            payload=json.loads(chunk_json),
+                        )
                     yield f"data: {chunk_json}\n\n"
+                if chat_sse_logger is not None:
+                    log_xpd_chat_sse_event(
+                        chat_sse_logger,
+                        event="xpd.chat.response",
+                        path=path,
+                        conversation_id=chat_request.conversation_id or "",
+                        request_id=chat_request.request_id or "",
+                        message_type="done",
+                        payload="[DONE]",
+                    )
                 yield "data: [DONE]\n\n"
             except Exception as e:
                 traceback.print_stack()
@@ -99,6 +153,16 @@ def register_chat_routes(
                     "conversation_id": chat_request.conversation_id or "",
                     "request_id": chat_request.request_id or "",
                 }
+                if chat_sse_logger is not None:
+                    log_xpd_chat_sse_event(
+                        chat_sse_logger,
+                        event="xpd.chat.response",
+                        path=path,
+                        conversation_id=chat_request.conversation_id or "",
+                        request_id=chat_request.request_id or "",
+                        message_type="error",
+                        payload=error_data,
+                    )
                 yield f"data: {json.dumps(error_data)}\n\n"
 
         return StreamingResponse(
