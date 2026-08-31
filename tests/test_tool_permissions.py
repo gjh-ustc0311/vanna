@@ -16,7 +16,6 @@ from vanna.core.tool import (
 )
 from vanna.core.user import User
 from vanna.core.registry import ToolRegistry
-from vanna.components import UiComponent, SimpleTextComponent
 from vanna.integrations.local.agent_memory import DemoAgentMemory
 
 T = TypeVar("T")

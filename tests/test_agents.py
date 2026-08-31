@@ -82,23 +82,11 @@ async def assert_agent_top_artist(agent, expected_artist="Iron Maiden"):
             print(f"  Content: {str(component.content)[:200]}...")
         print(f"  Full: {component}")
 
-    # Look for the expected artist in any component
-    found_artist = False
-    for component in components:
-        # Check rich_component.content
-        if hasattr(component, "rich_component") and hasattr(
-            component.rich_component, "content"
-        ):
-            if expected_artist in component.rich_component.content:
-                found_artist = True
-                break
-        # Check simple_component.text
-        if hasattr(component, "simple_component") and hasattr(
-            component.simple_component, "text"
-        ):
-            if expected_artist in component.simple_component.text:
-                found_artist = True
-                break
+    found_artist = any(
+        expected_artist in component.text
+        for component in components
+        if component.type == "text"
+    )
 
     assert found_artist, (
         f"Response should mention '{expected_artist}' as the top artist. Got {len(components)} components."

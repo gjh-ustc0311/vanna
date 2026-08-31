@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pydantic import BaseModel
 
-from vanna.core import User, UiComponent
+from vanna.core import Component, TextComponent, User
 
 
 class ExpectedOutcome(BaseModel):
@@ -22,7 +22,7 @@ class ExpectedOutcome(BaseModel):
     - tools_not_called: List of tool names that should NOT be called
     - final_answer_contains: Keywords/phrases that should appear in output
     - final_answer_not_contains: Keywords/phrases that should NOT appear
-    - min_components: Minimum number of UI components expected
+    - min_components: Minimum number of response components expected
     - max_execution_time_ms: Maximum allowed execution time
     - custom_validators: Custom validation functions
     """
@@ -66,7 +66,7 @@ class AgentResult:
     """
 
     test_case_id: str
-    components: List[UiComponent]
+    components: List[Component]
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
     llm_requests: List[Dict[str, Any]] = field(default_factory=list)
     execution_time_ms: float = 0.0
@@ -76,18 +76,11 @@ class AgentResult:
 
     def get_final_answer(self) -> str:
         """Extract the final answer from components."""
-        # Find text components and concatenate
-        texts = []
-        for component in self.components:
-            if hasattr(component, "rich_component"):
-                rich_comp = component.rich_component
-                if hasattr(rich_comp, "type") and rich_comp.type.value == "text":
-                    content = rich_comp.data.get("content") or getattr(
-                        rich_comp, "content", ""
-                    )
-                    if content:
-                        texts.append(content)
-        return "\n".join(texts)
+        return "\n".join(
+            component.text
+            for component in self.components
+            if isinstance(component, TextComponent)
+        )
 
     def get_tool_names_called(self) -> List[str]:
         """Get list of tool names that were called."""

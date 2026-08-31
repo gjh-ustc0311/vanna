@@ -1,8 +1,7 @@
 # 精简项目-003
 
-Component 太复杂，不需要展示图 表、任务状态、通知、日志、任务列表等，请梳理并简化
-	- Rich 和 simple 统一
-	- 只保留 text、dataframe、link 三个类型
+当前rich和Component 太复杂，rich和simple同时存在，其实我们不需要展示图表、任务状态、通知、日志、任务列表等，是否可以精简优化，给出你的方案
+
 
 ## 文档目录
 - prd 文档：完善的prd 写到 ./docs/prds 目录

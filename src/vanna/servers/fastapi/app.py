@@ -2,6 +2,7 @@
 FastAPI server factory for Vanna Agents.
 """
 
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ... import __version__
 from ...core import Agent
+from ...web_components import get_component_files
 from ..base import ChatHandler
 from .routes import register_chat_routes
 from .xpd_logging import configure_xpd_chat_sse_logger
@@ -57,19 +59,26 @@ class VannaFastAPIServer:
 
             app.add_middleware(CORSMiddleware, **cors_params)
 
-        # Add static file serving in dev mode
+        # Serve a version-matched browser client by default. A caller may opt into
+        # an external CDN explicitly, while development mode may point at a fresh
+        # local Vite build.
         dev_mode = self.config.get("dev_mode", False)
-        if dev_mode:
-            static_folder = self.config.get("static_folder", "static")
-            try:
-                import os
-
-                if os.path.exists(static_folder):
-                    app.mount(
-                        "/static", StaticFiles(directory=static_folder), name="static"
-                    )
-            except Exception:
-                pass  # Static files not available
+        cdn_url = None if dev_mode else self.config.get("cdn_url")
+        if not cdn_url:
+            static_folder = self.config.get("static_folder")
+            if static_folder is None:
+                static_folder = get_component_files()["js"].parent
+            static_folder = Path(static_folder)
+            component_bundle = static_folder / "vanna-components.js"
+            if not component_bundle.is_file():
+                raise RuntimeError(
+                    "The Vanna WebComponent bundle is missing: "
+                    f"{component_bundle}. Run `npm run build` in "
+                    "frontends/webcomponent."
+                )
+            app.mount(
+                "/static", StaticFiles(directory=static_folder), name="static"
+            )
 
         # Register routes. XPD client-boundary logging is deliberately enabled
         # only by the private marker set by the XPD CLI path.

@@ -78,16 +78,20 @@ def test_login_template_uses_server_backed_forms():
 
     html = get_index_html()
     logged_in = get_index_html(logged_in_email="admin@example.com")
+    cdn_html = get_index_html(cdn_url="https://cdn.example.com/vanna.js")
 
     assert '<form id="loginForm" method="post" action="/login">' in html
     assert 'name="email"' in html
     assert 'type="submit" id="loginButton"' in html
     assert '<form method="post" action="/logout"' in html
-    assert 'sse-endpoint="/api/vanna/v2/chat_sse"' in html
-    assert 'poll-endpoint="/api/vanna/v2/chat_poll"' in html
+    assert 'sse-endpoint="/api/vanna/v3/chat_sse"' in html
+    assert 'poll-endpoint="/api/vanna/v3/chat_poll"' in html
     assert "ws-endpoint" not in html
     assert "WebSocket" not in html
     assert "document.cookie" not in html
+    assert '<script type="module" src="/static/vanna-components.js"></script>' in html
+    assert "https://img.vanna.ai" not in html
+    assert 'src="https://cdn.example.com/vanna.js"' in cdn_html
     assert "admin@example.com</span>" in logged_in
     assert 'id="loginContainer" class="max-w-md' in logged_in
     assert "border-vanna-teal/30 hidden" in logged_in
@@ -122,12 +126,31 @@ def test_fastapi_local_login_sets_cookie_and_renders_authenticated_page():
         "/",
         "/login",
         "/logout",
-        "/api/vanna/v2/chat_sse",
-        "/api/vanna/v2/chat_poll",
+        "/api/vanna/v3/chat_sse",
+        "/api/vanna/v3/chat_poll",
         "/health",
     } <= route_paths
-    assert "/api/vanna/v2/chat_websocket" not in route_paths
+    assert "/api/vanna/v2/chat_sse" not in route_paths
+    assert "/api/vanna/v2/chat_poll" not in route_paths
     assert not any(isinstance(route, WebSocketRoute) for route in app.routes)
+
+
+def test_fastapi_serves_the_version_matched_webcomponent_bundle():
+    from fastapi.testclient import TestClient
+
+    from vanna.servers.fastapi import VannaFastAPIServer
+    from vanna.web_components import get_component_files
+
+    bundle = get_component_files()["js"]
+    assert bundle.is_file()
+
+    client = TestClient(VannaFastAPIServer(None).create_app())  # type: ignore[arg-type]
+    response = client.get("/static/vanna-components.js")
+
+    assert response.status_code == 200
+    assert "/api/vanna/v3/chat_sse" in response.text
+    assert "Thinking…" in response.text
+    assert "Sending message..." not in response.text
 
 
 def test_fastapi_sse_and_polling_contracts():
@@ -141,8 +164,7 @@ def test_fastapi_sse_and_polling_contracts():
         @staticmethod
         def _chunk(request):
             return ChatStreamChunk(
-                rich={"type": "rich_text", "content": "ok"},
-                simple=None,
+                component={"type": "text", "text": "ok"},
                 conversation_id=request.conversation_id or "conv_test",
                 request_id=request.request_id or "req_test",
             )
@@ -158,11 +180,11 @@ def test_fastapi_sse_and_polling_contracts():
     client = TestClient(app)
 
     sse = client.post(
-        "/api/vanna/v2/chat_sse",
+        "/api/vanna/v3/chat_sse",
         json={"message": "hello", "conversation_id": "conv_1"},
     )
     poll = client.post(
-        "/api/vanna/v2/chat_poll",
+        "/api/vanna/v3/chat_poll",
         json={"message": "hello", "conversation_id": "conv_1"},
     )
 
@@ -260,6 +282,8 @@ def test_cli_uses_loopback_default_for_xpd_mode(monkeypatch, tmp_path):
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 8000
     assert captured["config"]["_xpd_chat_sse_logging"] is True
+    assert captured["config"]["cdn_url"] is None
+    assert captured["config"]["static_folder"] is None
 
 
 def test_cli_accepts_all_loopback_host_forms(monkeypatch, tmp_path):

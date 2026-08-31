@@ -9,9 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from vanna.components import (
     DataFrameComponent,
-    RichTextComponent,
-    SimpleTextComponent,
-    UiComponent,
 )
 from vanna.core.tool import Tool, ToolContext, ToolResult
 
@@ -73,15 +70,7 @@ class SearchXpdSchemaTool(Tool[SearchXpdSchemaArgs]):
             result_for_llm=json.dumps(
                 payload, ensure_ascii=False, separators=(",", ":")
             ),
-            ui_component=UiComponent(
-                rich_component=RichTextComponent(
-                    content="已加载 XPD 三表 Schema 契约，可继续生成并执行只读查询。",
-                    markdown=False,
-                ),
-                simple_component=SimpleTextComponent(
-                    text="XPD schema contract loaded."
-                ),
-            ),
+            component=None,
             metadata={
                 "contract_version": evidence.contract_version,
                 "table_count": len(evidence.tables),
@@ -134,30 +123,18 @@ class RunXpdSqlTool(Tool[RunXpdSqlArgs]):
             "rows_visible_to_llm": min(result.row_count, 20),
             "truncated": result.truncated,
         }
-        description = f"返回 {result.row_count} 行"
-        if result.truncated:
-            description += "；结果超过上限，仅展示前 100 行"
         component = DataFrameComponent(
             rows=result.rows,
             columns=result.columns,
-            row_count=result.row_count,
-            column_count=len(result.columns),
             title="XPD 查询结果",
-            description=description,
-            max_rows_displayed=100,
-            exportable=False,
-            paginated=True,
-            page_size=25,
+            truncated=result.truncated,
         )
         return ToolResult(
             success=True,
             result_for_llm=json.dumps(
                 llm_payload, ensure_ascii=False, separators=(",", ":")
             ),
-            ui_component=UiComponent(
-                rich_component=component,
-                simple_component=SimpleTextComponent(text=description),
-            ),
+            component=component,
             metadata={
                 "row_count": result.row_count,
                 "truncated": result.truncated,
@@ -175,7 +152,7 @@ def _error_result(error: XpdError) -> ToolResult:
             ensure_ascii=False,
             separators=(",", ":"),
         ),
-        ui_component=None,
+        component=None,
         error=message,
         metadata={"error_code": error.code},
     )

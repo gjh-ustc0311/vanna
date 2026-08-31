@@ -41,7 +41,10 @@ vanna --xpd-config /absolute/path/to/configs/app-local.yaml \
 ```
 
 The CLI does not discover profiles, load bundled example agents, or start a fallback
-demo agent. `--xpd-config` is required.
+demo agent. `--xpd-config` is required. The chat page loads the version-matched
+WebComponent bundled with the Python package; `--cdn-url` is an explicit override.
+The assistant can also answer safe general questions from the model's existing
+knowledge without routing them through the XPD data tools.
 
 ## XPD safety contract
 
@@ -82,8 +85,9 @@ python -m pip install 'vanna[anthropic]'
 `local` and `sqlite` use base-package dependencies. `all` installs the retained
 integration dependencies; server and development dependencies remain separate.
 
-The component protocol still supports custom `ChartComponent` payloads, but Vanna 3.0
-does not ship `PlotlyChartGenerator` or `VisualizeDataTool`.
+The public component protocol is intentionally limited to `TextComponent`,
+`DataFrameComponent`, and `LinkComponent`. Components are flat payloads; there is no
+Rich/Simple wrapper, lifecycle tree, chart renderer, task UI, notification, or log UI.
 
 ## HTTP API
 
@@ -94,8 +98,8 @@ The FastAPI server exposes:
 | `GET /` | Local login state and WebComponent page |
 | `POST /login` | Select a local demo identity |
 | `POST /logout` | Clear the local identity cookie |
-| `POST /api/vanna/v2/chat_sse` | Stream structured response chunks |
-| `POST /api/vanna/v2/chat_poll` | Polling fallback using the same chunk contract |
+| `POST /api/vanna/v3/chat_sse` | Stream append-only response chunks |
+| `POST /api/vanna/v3/chat_poll` | Polling fallback using the same component contract |
 | `GET /health` | Health check |
 
 There is no Flask, Legacy `/api/v0/*`, or WebSocket chat endpoint. See the
@@ -134,8 +138,8 @@ python scripts/verify_distribution.py /tmp/vanna-build
 - Non-supported integration modules and their install extras were removed.
 - ChromaDB, FAISS, Hive, Mock, PostgreSQL, and Qdrant are not included.
 - Google/Gemini support is not included.
-- Built-in Plotly chart generation was removed while the generic component protocol
-  was retained.
+- Rich/Simple components and the V2 chat protocol were replaced by the three-type,
+  append-only component contract and V3 chat endpoints.
 - The `vanna` command now requires `--xpd-config` and only starts the local XPD mode.
 
 Downstream applications using removed APIs must migrate directly to the current Agent,

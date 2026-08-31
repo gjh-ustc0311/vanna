@@ -10,9 +10,9 @@ from typing import Any, AsyncGenerator, Dict, Optional
 from urllib.parse import parse_qs, unquote
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
-from ..base import ChatHandler, ChatRequest, ChatResponse
+from ..base import ChatError, ChatHandler, ChatRequest, ChatStreamError
 from ..base.templates import get_index_html
 from ...core.user.request_context import RequestContext
 from .xpd_logging import log_xpd_chat_sse_event
@@ -42,7 +42,7 @@ def register_chat_routes(
     async def index(http_request: Request) -> str:
         """Serve the main chat interface."""
         dev_mode = config.get("dev_mode", False)
-        cdn_url = config.get("cdn_url", "https://img.vanna.ai/vanna-components.js")
+        cdn_url = None if dev_mode else config.get("cdn_url")
         api_base_url = config.get("api_base_url", "")
         selected_email = unquote(http_request.cookies.get("vanna_email", ""))
         if selected_email not in _LOCAL_DEMO_EMAILS:
@@ -77,32 +77,34 @@ def register_chat_routes(
         response.delete_cookie("vanna_email", path="/")
         return response
 
-    @app.post("/api/vanna/v2/chat_sse")
+    @app.post("/api/vanna/v3/chat_sse")
     async def chat_sse(
         chat_request: ChatRequest, http_request: Request
     ) -> StreamingResponse:
         """Server-Sent Events endpoint for streaming chat."""
+        chat_request.conversation_id = (
+            chat_request.conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
+        )
+        chat_request.request_id = chat_request.request_id or str(uuid.uuid4())
+
         request_payload = None
         if chat_sse_logger is not None:
             request_payload = chat_request.model_dump(
                 mode="json",
-                exclude={"request_context"},
                 exclude_unset=True,
             )
-            # Resolve IDs before logging so the request event and every outbound
-            # frame share the same correlation values. ChatHandler will reuse them.
-            chat_request.conversation_id = (
-                chat_request.conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
-            )
-            chat_request.request_id = chat_request.request_id or str(uuid.uuid4())
 
         # Extract request context for user resolution
-        chat_request.request_context = RequestContext(
-            cookies=dict(http_request.cookies),
-            headers=dict(http_request.headers),
-            remote_addr=http_request.client.host if http_request.client else None,
-            query_params=dict(http_request.query_params),
-            metadata=chat_request.metadata,
+        chat_request.attach_request_context(
+            RequestContext(
+                cookies=dict(http_request.cookies),
+                headers=dict(http_request.headers),
+                remote_addr=(
+                    http_request.client.host if http_request.client else None
+                ),
+                query_params=dict(http_request.query_params),
+                metadata=chat_request.metadata,
+            )
         )
 
         path = http_request.url.path
@@ -144,15 +146,17 @@ def register_chat_routes(
                         payload="[DONE]",
                     )
                 yield "data: [DONE]\n\n"
-            except Exception as e:
-                traceback.print_stack()
+            except Exception:
                 traceback.print_exc()
-                error_data = {
-                    "type": "error",
-                    "data": {"message": str(e)},
-                    "conversation_id": chat_request.conversation_id or "",
-                    "request_id": chat_request.request_id or "",
-                }
+                error_frame = ChatStreamError(
+                    error=ChatError(
+                        code="internal_error",
+                        message="The request could not be completed. Please try again.",
+                    ),
+                    conversation_id=chat_request.conversation_id or "",
+                    request_id=chat_request.request_id or "",
+                )
+                error_json = error_frame.model_dump_json()
                 if chat_sse_logger is not None:
                     log_xpd_chat_sse_event(
                         chat_sse_logger,
@@ -161,9 +165,10 @@ def register_chat_routes(
                         conversation_id=chat_request.conversation_id or "",
                         request_id=chat_request.request_id or "",
                         message_type="error",
-                        payload=error_data,
+                        payload=json.loads(error_json),
                     )
-                yield f"data: {json.dumps(error_data)}\n\n"
+                yield f"data: {error_json}\n\n"
+                yield "data: [DONE]\n\n"
 
         return StreamingResponse(
             generate(),
@@ -175,24 +180,42 @@ def register_chat_routes(
             },
         )
 
-    @app.post("/api/vanna/v2/chat_poll")
+    @app.post("/api/vanna/v3/chat_poll")
     async def chat_poll(
         chat_request: ChatRequest, http_request: Request
-    ) -> ChatResponse:
+    ):
         """Polling endpoint for chat."""
+        chat_request.conversation_id = (
+            chat_request.conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
+        )
+        chat_request.request_id = chat_request.request_id or str(uuid.uuid4())
         # Extract request context for user resolution
-        chat_request.request_context = RequestContext(
-            cookies=dict(http_request.cookies),
-            headers=dict(http_request.headers),
-            remote_addr=http_request.client.host if http_request.client else None,
-            query_params=dict(http_request.query_params),
-            metadata=chat_request.metadata,
+        chat_request.attach_request_context(
+            RequestContext(
+                cookies=dict(http_request.cookies),
+                headers=dict(http_request.headers),
+                remote_addr=(
+                    http_request.client.host if http_request.client else None
+                ),
+                query_params=dict(http_request.query_params),
+                metadata=chat_request.metadata,
+            )
         )
 
         try:
             result = await chat_handler.handle_poll(chat_request)
             return result
-        except Exception as e:
-            traceback.print_stack()
+        except Exception:
             traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+            error_frame = ChatStreamError(
+                error=ChatError(
+                    code="internal_error",
+                    message="The request could not be completed. Please try again.",
+                ),
+                conversation_id=chat_request.conversation_id,
+                request_id=chat_request.request_id,
+            )
+            return JSONResponse(
+                status_code=500,
+                content=error_frame.model_dump(mode="json"),
+            )

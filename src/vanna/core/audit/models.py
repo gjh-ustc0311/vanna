@@ -6,7 +6,7 @@ This module contains data models for audit logging events.
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from pydantic import BaseModel, Field
 
@@ -18,7 +18,6 @@ class AuditEventType(StrEnum):
 
     # Access control events
     TOOL_ACCESS_CHECK = "tool_access_check"
-    UI_FEATURE_ACCESS_CHECK = "ui_feature_access_check"
 
     # Tool execution events
     TOOL_INVOCATION = "tool_invocation"
@@ -63,7 +62,9 @@ class AuditEvent(BaseModel):
 class ToolAccessCheckEvent(AuditEvent):
     """Audit event for tool access permission checks."""
 
-    event_type: AuditEventType = AuditEventType.TOOL_ACCESS_CHECK
+    event_type: AuditEventType = cast(
+        AuditEventType, AuditEventType.TOOL_ACCESS_CHECK
+    )
     tool_name: str
     access_granted: bool
     required_groups: List[str] = Field(default_factory=list)
@@ -73,7 +74,7 @@ class ToolAccessCheckEvent(AuditEvent):
 class ToolInvocationEvent(AuditEvent):
     """Audit event for actual tool executions."""
 
-    event_type: AuditEventType = AuditEventType.TOOL_INVOCATION
+    event_type: AuditEventType = cast(AuditEventType, AuditEventType.TOOL_INVOCATION)
     tool_call_id: str
     tool_name: str
 
@@ -81,14 +82,11 @@ class ToolInvocationEvent(AuditEvent):
     parameters: Dict[str, Any] = Field(default_factory=dict)
     parameters_sanitized: bool = False
 
-    # UI context at invocation time
-    ui_features_available: List[str] = Field(default_factory=list)
-
 
 class ToolResultEvent(AuditEvent):
     """Audit event for tool execution results."""
 
-    event_type: AuditEventType = AuditEventType.TOOL_RESULT
+    event_type: AuditEventType = cast(AuditEventType, AuditEventType.TOOL_RESULT)
     tool_call_id: str
     tool_name: str
     success: bool
@@ -97,22 +95,15 @@ class ToolResultEvent(AuditEvent):
 
     # Result metadata (without full content for size)
     result_size_bytes: Optional[int] = None
-    ui_component_type: Optional[str] = None
-
-
-class UiFeatureAccessCheckEvent(AuditEvent):
-    """Audit event for UI feature access checks."""
-
-    event_type: AuditEventType = AuditEventType.UI_FEATURE_ACCESS_CHECK
-    feature_name: str
-    access_granted: bool
-    required_groups: List[str] = Field(default_factory=list)
+    component_type: Optional[str] = None
 
 
 class AiResponseEvent(AuditEvent):
     """Audit event for AI-generated responses."""
 
-    event_type: AuditEventType = AuditEventType.AI_RESPONSE_GENERATED
+    event_type: AuditEventType = cast(
+        AuditEventType, AuditEventType.AI_RESPONSE_GENERATED
+    )
 
     # Response metadata
     response_length_chars: int

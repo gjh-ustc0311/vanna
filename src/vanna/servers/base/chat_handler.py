@@ -58,7 +58,11 @@ class ChatHandler:
         async for chunk in self.handle_stream(request):
             chunks.append(chunk)
 
-        return ChatResponse.from_chunks(chunks)
+        return ChatResponse.from_chunks(
+            chunks,
+            conversation_id=request.conversation_id or "",
+            request_id=request.request_id or "",
+        )
 
     def _generate_conversation_id(self) -> str:
         """Generate new conversation ID."""

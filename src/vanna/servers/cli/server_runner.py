@@ -42,8 +42,8 @@ from ...integrations.xpd.errors import XpdError
 )
 @click.option(
     "--cdn-url",
-    default="https://img.vanna.ai/vanna-components.js",
-    help="CDN URL for web components",
+    default=None,
+    help="Explicit CDN override for the bundled web components",
 )
 def main(
     port: int,
@@ -52,7 +52,7 @@ def main(
     xpd_config: Path,
     dev: bool,
     static_folder: Optional[str],
-    cdn_url: str,
+    cdn_url: Optional[str],
 ) -> None:
     """Run the XPD local read-only data assistant."""
 
@@ -65,14 +65,14 @@ def main(
     if config:
         server_config = json.load(cast(TextIO, config))
 
-    if static_folder is None:
-        static_folder = "frontends/webcomponent/static" if dev else "static"
+    if dev and static_folder is None:
+        static_folder = "frontends/webcomponent/dist"
 
     server_config.update(
         {
             "dev_mode": dev,
             "static_folder": static_folder,
-            "cdn_url": cdn_url,
+            "cdn_url": None if dev else cdn_url,
             "api_base_url": "",
             "_xpd_chat_sse_logging": True,
         }
@@ -99,8 +99,10 @@ def main(
         click.echo(
             f"📦 Development mode: loading web components from ./{static_folder}/"
         )
-    else:
+    elif cdn_url:
         click.echo("🌍 Production mode: loading web components from CDN")
+    else:
+        click.echo("📦 Loading the version-matched bundled web components")
     try:
         server.run(host=host, port=port)
     except KeyboardInterrupt:

@@ -10,14 +10,8 @@ import uuid
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional
 
 from vanna.components import (
-    UiComponent,
-    SimpleTextComponent,
-    RichTextComponent,
-    StatusBarUpdateComponent,
-    TaskTrackerUpdateComponent,
-    ChatInputUpdateComponent,
-    StatusCardComponent,
-    Task,
+    Component,
+    TextComponent,
 )
 from .config import AgentConfig
 from vanna.core.storage import ConversationStore
@@ -39,7 +33,6 @@ from vanna.core.filter import ConversationFilter
 from vanna.core.observability import ObservabilityProvider
 from vanna.core.user.resolver import UserResolver
 from vanna.core.user.request_context import RequestContext
-from vanna.core.agent.config import UiFeature
 from vanna.core.audit import AuditLogger
 from vanna.capabilities.agent_memory import AgentMemory
 
@@ -145,9 +138,9 @@ class Agent:
         message: str,
         *,
         conversation_id: Optional[str] = None,
-    ) -> AsyncGenerator[UiComponent, None]:
+    ) -> AsyncGenerator[Component, None]:
         """
-        Process a user message and yield UI components with error handling.
+        Process a user message and yield supported components with error handling.
 
         Args:
             request_context: Request context for user resolution (includes metadata)
@@ -155,7 +148,7 @@ class Agent:
             conversation_id: Optional conversation ID; if None, creates new conversation
 
         Yields:
-            UiComponent instances for UI updates
+            Supported components for the client
         """
         try:
             # Delegate to internal method
@@ -195,36 +188,15 @@ class Agent:
                         exc_info=True,
                     )
 
-            # Yield error component to UI (simple, user-friendly message)
-            error_description = "An unexpected error occurred while processing your message. Please try again."
-            if conversation_id:
-                error_description += f"\n\nConversation ID: {conversation_id}"
-
-            yield UiComponent(
-                rich_component=StatusCardComponent(
-                    title="Error Processing Message",
-                    status="error",
-                    description=error_description,
-                    icon="⚠️",
-                ),
-                simple_component=SimpleTextComponent(
-                    text=f"Error: An unexpected error occurred. Please try again.{f' (Conversation ID: {conversation_id})' if conversation_id else ''}"
-                ),
-            )
-
-            # Update status bar to show error state
-            yield UiComponent(  # type: ignore
-                rich_component=StatusBarUpdateComponent(
-                    status="error",
-                    message="Error occurred",
-                    detail="An unexpected error occurred while processing your message",
-                )
-            )
-
-            # Re-enable chat input so user can try again
-            yield UiComponent(  # type: ignore
-                rich_component=ChatInputUpdateComponent(
-                    placeholder="Try again...", disabled=False
+            yield TextComponent(
+                text=(
+                    "An unexpected error occurred while processing your message. "
+                    "Please try again."
+                    + (
+                        f"\n\nConversation ID: `{conversation_id}`"
+                        if conversation_id
+                        else ""
+                    )
                 )
             )
 
@@ -234,9 +206,9 @@ class Agent:
         message: str,
         *,
         conversation_id: Optional[str] = None,
-    ) -> AsyncGenerator[UiComponent, None]:
+    ) -> AsyncGenerator[Component, None]:
         """
-        Internal method to process a user message and yield UI components.
+        Internal method to process a user message and yield supported components.
 
         Args:
             request_context: Request context for user resolution (includes metadata)
@@ -244,7 +216,7 @@ class Agent:
             conversation_id: Optional conversation ID; if None, creates new conversation
 
         Yields:
-            UiComponent instances for UI updates
+            Supported components for the client
         """
         # Resolve user from request context with observability
         user_resolution_span = None
@@ -305,23 +277,8 @@ class Agent:
                     )
 
                 if components:
-                    # Yield the starter UI components
                     for component in components:
                         yield component
-
-                    # Yield finalization components
-                    yield UiComponent(  # type: ignore
-                        rich_component=StatusBarUpdateComponent(
-                            status="idle",
-                            message="Ready",
-                            detail="Choose an option or type a message",
-                        )
-                    )
-                    yield UiComponent(  # type: ignore
-                        rich_component=ChatInputUpdateComponent(
-                            placeholder="Ask a question...", disabled=False
-                        )
-                    )
 
                 if self.observability_provider and starter_span:
                     await self.observability_provider.end_span(starter_span)
@@ -397,15 +354,6 @@ class Agent:
 
         request_id = str(uuid.uuid4())
 
-        # Update status to working
-        yield UiComponent(  # type: ignore
-            rich_component=StatusBarUpdateComponent(
-                status="working",
-                message="Processing your request...",
-                detail="Analyzing query",
-            )
-        )
-
         # Load or create conversation with observability (but don't add message yet)
         conversation_span = None
         if self.observability_provider:
@@ -472,20 +420,6 @@ class Agent:
                             async for component in workflow_result.components:
                                 yield component
 
-                    # Finalize response (status bar + chat input)
-                    yield UiComponent(  # type: ignore
-                        rich_component=StatusBarUpdateComponent(
-                            status="idle",
-                            message="Workflow complete",
-                            detail="Ready for next message",
-                        )
-                    )
-                    yield UiComponent(  # type: ignore
-                        rich_component=ChatInputUpdateComponent(
-                            placeholder="Ask a question...", disabled=False
-                        )
-                    )
-
                     # Save conversation if auto-save enabled
                     if self.config.auto_save_conversations:
                         await self.conversation_store.update_conversation(conversation)
@@ -514,30 +448,14 @@ class Agent:
         # Not triggered, add user message to conversation now
         conversation.add_message(Message(role="user", content=message))
 
-        # Add initial task
-        context_task = Task(
-            title="Load conversation context",
-            description="Reading message history and user context",
-            status="pending",
-        )
-        yield UiComponent(  # type: ignore
-            rich_component=TaskTrackerUpdateComponent.add_task(context_task)
-        )
-
-        # Collect available UI features for auditing
-        ui_features_available = []
-        for feature_name in self.config.ui_features.feature_group_access.keys():
-            if self.config.ui_features.can_user_access_feature(feature_name, user):
-                ui_features_available.append(feature_name)
-
-        # Create context with observability provider and UI features
+        # Create the tool context. Presentation state is owned by the client.
         context = ToolContext(
             user=user,
             conversation_id=conversation_id,
             request_id=request_id,
             agent_memory=self.agent_memory,
             observability_provider=self.observability_provider,
-            metadata={"ui_features_available": ui_features_available},
+            metadata={},
         )
 
         # Enrich context with additional data with observability
@@ -580,13 +498,6 @@ class Agent:
                     "ms",
                     tags={"schema_count": str(len(tool_schemas))},
                 )
-
-        # Update task status to completed
-        yield UiComponent(  # type: ignore
-            rich_component=TaskTrackerUpdateComponent.update_task(
-                context_task.id, status="completed"
-            )
-        )
 
         # Build system prompt with observability
         prompt_span = None
@@ -644,10 +555,6 @@ class Agent:
         tool_iterations = 0
 
         while tool_iterations < self.config.max_tool_iterations:
-            if self.config.include_thinking_indicators and tool_iterations == 0:
-                # TODO: Yield thinking indicator
-                pass
-
             # Get LLM response
             if self.config.stream_responses:
                 response = await self._handle_streaming_response(request)
@@ -667,120 +574,9 @@ class Agent:
                 )
                 conversation.add_message(assistant_message)
 
-                if response.content is not None:
-                    # Yield any partial content from the assistant before tool execution
-                    has_tool_invocation_message_in_chat = (
-                        self.config.ui_features.can_user_access_feature(
-                            UiFeature.UI_FEATURE_SHOW_TOOL_INVOCATION_MESSAGE_IN_CHAT,
-                            user,
-                        )
-                    )
-                    if has_tool_invocation_message_in_chat:
-                        yield UiComponent(
-                            rich_component=RichTextComponent(
-                                content=response.content, markdown=True
-                            ),
-                            simple_component=SimpleTextComponent(text=response.content),
-                        )
-
-                        # Update status to executing tools
-                        yield UiComponent(  # type: ignore
-                            rich_component=StatusBarUpdateComponent(
-                                status="working",
-                                message="Executing tools...",
-                                detail=f"Running {len(response.tool_calls or [])} tools",
-                            )
-                        )
-                    else:
-                        # Yield as a status update instead
-                        yield UiComponent(  # type: ignore
-                            rich_component=StatusBarUpdateComponent(
-                                status="working", message=response.content, detail=""
-                            )
-                        )
-
                 # Collect all tool results first
                 tool_results = []
-                for i, tool_call in enumerate(response.tool_calls or []):
-                    # Add task for this tool execution
-                    tool_task = Task(
-                        title=f"Execute {tool_call.name}",
-                        description=f"Running tool with provided arguments",
-                        status="in_progress",
-                    )
-
-                    has_tool_names_access = (
-                        self.config.ui_features.can_user_access_feature(
-                            UiFeature.UI_FEATURE_SHOW_TOOL_NAMES, user
-                        )
-                    )
-
-                    # Audit UI feature access check
-                    if (
-                        self.audit_logger
-                        and self.config.audit_config.enabled
-                        and self.config.audit_config.log_ui_feature_checks
-                    ):
-                        await self.audit_logger.log_ui_feature_access(
-                            user=user,
-                            feature_name=UiFeature.UI_FEATURE_SHOW_TOOL_NAMES,
-                            access_granted=has_tool_names_access,
-                            required_groups=self.config.ui_features.feature_group_access.get(
-                                UiFeature.UI_FEATURE_SHOW_TOOL_NAMES, []
-                            ),
-                            conversation_id=conversation.id,
-                            request_id=request_id,
-                        )
-
-                    if has_tool_names_access:
-                        yield UiComponent(  # type: ignore
-                            rich_component=TaskTrackerUpdateComponent.add_task(
-                                tool_task
-                            )
-                        )
-
-                    response_str = response.content
-
-                    # Use primitive StatusCard instead of semantic ToolExecutionComponent
-                    tool_status_card = StatusCardComponent(
-                        title=f"Executing {tool_call.name}",
-                        status="running",
-                        description=f"Running tool with {len(tool_call.arguments)} arguments",
-                        icon="⚙️",
-                        metadata=tool_call.arguments,
-                    )
-
-                    has_tool_args_access = (
-                        self.config.ui_features.can_user_access_feature(
-                            UiFeature.UI_FEATURE_SHOW_TOOL_ARGUMENTS, user
-                        )
-                    )
-
-                    # Audit UI feature access check
-                    if (
-                        self.audit_logger
-                        and self.config.audit_config.enabled
-                        and self.config.audit_config.log_ui_feature_checks
-                    ):
-                        await self.audit_logger.log_ui_feature_access(
-                            user=user,
-                            feature_name=UiFeature.UI_FEATURE_SHOW_TOOL_ARGUMENTS,
-                            access_granted=has_tool_args_access,
-                            required_groups=self.config.ui_features.feature_group_access.get(
-                                UiFeature.UI_FEATURE_SHOW_TOOL_ARGUMENTS, []
-                            ),
-                            conversation_id=conversation.id,
-                            request_id=request_id,
-                        )
-
-                    if has_tool_args_access:
-                        yield UiComponent(
-                            rich_component=tool_status_card,
-                            simple_component=SimpleTextComponent(
-                                text=response_str or ""
-                            ),
-                        )
-
+                for tool_call in response.tool_calls or []:
                     # Run before_tool hooks with observability
                     tool = await self.tool_registry.get_tool(tool_call.name)
                     if tool:
@@ -877,112 +673,11 @@ class Agent:
                                     },
                                 )
 
-                    # Update status card to show completion
-                    final_status = "success" if result.success else "error"
-                    final_description = (
-                        f"Tool completed successfully"
-                        if result.success
-                        else f"Tool failed: {result.error or 'Unknown error'}"
-                    )
-
-                    has_tool_args_access_2 = (
-                        self.config.ui_features.can_user_access_feature(
-                            UiFeature.UI_FEATURE_SHOW_TOOL_ARGUMENTS, user
-                        )
-                    )
-
-                    # Audit UI feature access check
-                    if (
-                        self.audit_logger
-                        and self.config.audit_config.enabled
-                        and self.config.audit_config.log_ui_feature_checks
-                    ):
-                        await self.audit_logger.log_ui_feature_access(
-                            user=user,
-                            feature_name=UiFeature.UI_FEATURE_SHOW_TOOL_ARGUMENTS,
-                            access_granted=has_tool_args_access_2,
-                            required_groups=self.config.ui_features.feature_group_access.get(
-                                UiFeature.UI_FEATURE_SHOW_TOOL_ARGUMENTS, []
-                            ),
-                            conversation_id=conversation.id,
-                            request_id=request_id,
-                        )
-
-                    if has_tool_args_access_2:
-                        yield UiComponent(
-                            rich_component=tool_status_card.set_status(
-                                final_status, final_description
-                            ),
-                            simple_component=SimpleTextComponent(
-                                text=final_description
-                            ),
-                        )
-
-                    has_tool_names_access_2 = (
-                        self.config.ui_features.can_user_access_feature(
-                            UiFeature.UI_FEATURE_SHOW_TOOL_NAMES, user
-                        )
-                    )
-
-                    # Audit UI feature access check
-                    if (
-                        self.audit_logger
-                        and self.config.audit_config.enabled
-                        and self.config.audit_config.log_ui_feature_checks
-                    ):
-                        await self.audit_logger.log_ui_feature_access(
-                            user=user,
-                            feature_name=UiFeature.UI_FEATURE_SHOW_TOOL_NAMES,
-                            access_granted=has_tool_names_access_2,
-                            required_groups=self.config.ui_features.feature_group_access.get(
-                                UiFeature.UI_FEATURE_SHOW_TOOL_NAMES, []
-                            ),
-                            conversation_id=conversation.id,
-                            request_id=request_id,
-                        )
-
-                    if has_tool_names_access_2:
-                        # Update tool task to completed
-                        yield UiComponent(  # type: ignore
-                            rich_component=TaskTrackerUpdateComponent.update_task(
-                                tool_task.id,
-                                status="completed",
-                                detail=f"Tool {'completed successfully' if result.success else 'return an error'}",
-                            )
-                        )
-
-                    # Yield tool result
-                    if result.ui_component:
-                        # For errors, check if user has access to see error details
-                        if not result.success:
-                            has_tool_error_access = (
-                                self.config.ui_features.can_user_access_feature(
-                                    UiFeature.UI_FEATURE_SHOW_TOOL_ERROR, user
-                                )
-                            )
-
-                            # Audit UI feature access check
-                            if (
-                                self.audit_logger
-                                and self.config.audit_config.enabled
-                                and self.config.audit_config.log_ui_feature_checks
-                            ):
-                                await self.audit_logger.log_ui_feature_access(
-                                    user=user,
-                                    feature_name=UiFeature.UI_FEATURE_SHOW_TOOL_ERROR,
-                                    access_granted=has_tool_error_access,
-                                    required_groups=self.config.ui_features.feature_group_access.get(
-                                        UiFeature.UI_FEATURE_SHOW_TOOL_ERROR, []
-                                    ),
-                                    conversation_id=conversation.id,
-                                    request_id=request_id,
-                                )
-
-                            if has_tool_error_access:
-                                yield result.ui_component
-                        else:
-                            # Success results are always shown if they exist
-                            yield result.ui_component
+                    # Only successful, user-facing tool payloads enter the chat.
+                    # Tool failures remain in the LLM/audit path and are summarized
+                    # by the final assistant text.
+                    if result.success and result.component is not None:
+                        yield result.component
 
                     # Collect tool result data
                     tool_results.append(
@@ -1011,34 +706,13 @@ class Agent:
                     conversation, tool_schemas, user, system_prompt
                 )
             else:
-                # Update status to idle and set completion message
-                yield UiComponent(  # type: ignore
-                    rich_component=StatusBarUpdateComponent(
-                        status="idle",
-                        message="Response complete",
-                        detail="Ready for next message",
-                    )
-                )
-
-                # Update chat input placeholder
-                yield UiComponent(  # type: ignore
-                    rich_component=ChatInputUpdateComponent(
-                        placeholder="Ask a follow-up question...", disabled=False
-                    )
-                )
-
                 # Yield final text response
                 if response.content:
                     # Add assistant response to conversation
                     conversation.add_message(
                         Message(role="assistant", content=response.content)
                     )
-                    yield UiComponent(
-                        rich_component=RichTextComponent(
-                            content=response.content, markdown=True
-                        ),
-                        simple_component=SimpleTextComponent(text=response.content),
-                    )
+                    yield TextComponent(text=response.content)
                 break
 
         # Check if we hit the tool iteration limit
@@ -1046,15 +720,6 @@ class Agent:
             # The loop exited due to hitting the limit, not due to a natural completion
             logger.warning(
                 f"Tool iteration limit reached: {tool_iterations}/{self.config.max_tool_iterations}"
-            )
-
-            # Update status bar to show warning
-            yield UiComponent(  # type: ignore
-                rich_component=StatusBarUpdateComponent(
-                    status="warning",
-                    message="Tool limit reached",
-                    detail=f"Stopped after {tool_iterations} tool executions. The task may be incomplete.",
-                )
             )
 
             # Provide detailed warning message to user
@@ -1067,22 +732,7 @@ You can:
 - Adjust the `max_tool_iterations` setting if you need more tool calls
 - Break the task into smaller steps"""
 
-            yield UiComponent(
-                rich_component=RichTextComponent(
-                    content=warning_message, markdown=True
-                ),
-                simple_component=SimpleTextComponent(
-                    text=f"Tool limit reached after {tool_iterations} executions. Task may be incomplete."
-                ),
-            )
-
-            # Update chat input to suggest follow-up
-            yield UiComponent(  # type: ignore
-                rich_component=ChatInputUpdateComponent(
-                    placeholder="Continue the task or ask me something else...",
-                    disabled=False,
-                )
-            )
+            yield TextComponent(text=warning_message)
 
         # Save conversation if configured
         if self.config.auto_save_conversations:

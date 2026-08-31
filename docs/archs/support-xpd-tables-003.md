@@ -1,5 +1,8 @@
 # Vanna 3.0 精简架构与代码边界
 
+> 历史设计：组件协议部分已由 [004 三组件架构](./support-xpd-tables-004.md)
+> 取代；004 删除了本文保留的 Rich/Simple 与 Chart 扩展面。
+
 ## 1. 目标架构
 
 ```mermaid

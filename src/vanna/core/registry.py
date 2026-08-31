@@ -153,7 +153,7 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=msg,
-                ui_component=None,
+                component=None,
                 error=msg,
             )
 
@@ -179,7 +179,7 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=msg,
-                ui_component=None,
+                component=None,
                 error=msg,
             )
 
@@ -192,7 +192,7 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=msg,
-                ui_component=None,
+                component=None,
                 error=msg,
             )
 
@@ -208,7 +208,7 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=transform_result.reason,
-                ui_component=None,
+                component=None,
                 error=transform_result.reason,
             )
 
@@ -235,12 +235,9 @@ class ToolRegistry:
             and self.audit_config
             and self.audit_config.log_tool_invocations
         ):
-            # Get UI features if available from context
-            ui_features = context.metadata.get("ui_features_available", [])
             await self.audit_logger.log_tool_invocation(
                 user=context.user,
                 tool_call=tool_call,
-                ui_features=ui_features,
                 context=context,
                 sanitize_parameters=self.audit_config.sanitize_tool_parameters,
             )
@@ -273,6 +270,6 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=msg,
-                ui_component=None,
+                component=None,
                 error=msg,
             )

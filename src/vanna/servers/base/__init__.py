@@ -6,13 +6,21 @@ requests and responses.
 """
 
 from .chat_handler import ChatHandler
-from .models import ChatRequest, ChatStreamChunk, ChatResponse
+from .models import (
+    ChatError,
+    ChatRequest,
+    ChatResponse,
+    ChatStreamChunk,
+    ChatStreamError,
+)
 from .templates import INDEX_HTML
 
 __all__ = [
     "ChatHandler",
     "ChatRequest",
     "ChatStreamChunk",
+    "ChatStreamError",
+    "ChatError",
     "ChatResponse",
     "INDEX_HTML",
 ]

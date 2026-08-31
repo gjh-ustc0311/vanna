@@ -27,31 +27,15 @@ from .audit import (
     ToolAccessCheckEvent,
     ToolInvocationEvent,
     ToolResultEvent,
-    UiFeatureAccessCheckEvent,
     AiResponseEvent,
 )
 
-# UI Components
-from .components import UiComponent
-from .rich_component import RichComponent
+# Components
 from ..components import (
-    SimpleComponent,
-    SimpleComponentType,
-    SimpleImageComponent,
-    SimpleLinkComponent,
-    SimpleTextComponent,
-    ArtifactComponent,
-    BadgeComponent,
-    CardComponent,
+    Component,
     DataFrameComponent,
-    IconTextComponent,
-    LogViewerComponent,
-    NotificationComponent,
-    ProgressBarComponent,
-    ProgressDisplayComponent,
-    RichTextComponent,
-    StatusCardComponent,
-    TaskListComponent,
+    LinkComponent,
+    TextComponent,
 )
 
 # Exceptions
@@ -86,13 +70,6 @@ from .evaluation import (
     ComparisonReport,
     EvaluationDataset,
 )
-
-# Rebuild models to resolve forward references after all imports
-from .tool.models import ToolContext, ToolResult
-from .components import UiComponent  # Import UiComponent to ensure it's available
-
-ToolContext.model_rebuild()
-ToolResult.model_rebuild()
 
 __all__ = [
     # Models
@@ -137,30 +114,12 @@ __all__ = [
     "ToolAccessCheckEvent",
     "ToolInvocationEvent",
     "ToolResultEvent",
-    "UiFeatureAccessCheckEvent",
     "AiResponseEvent",
-    # UI Components
-    "UiComponent",
-    # Simple Components
-    "SimpleComponent",
-    "SimpleComponentType",
-    "SimpleTextComponent",
-    "SimpleImageComponent",
-    "SimpleLinkComponent",
-    # Rich Components
-    "RichComponent",
-    "ArtifactComponent",
-    "BadgeComponent",
-    "CardComponent",
+    # Components
+    "Component",
     "DataFrameComponent",
-    "IconTextComponent",
-    "LogViewerComponent",
-    "NotificationComponent",
-    "ProgressBarComponent",
-    "ProgressDisplayComponent",
-    "RichTextComponent",
-    "StatusCardComponent",
-    "TaskListComponent",
+    "LinkComponent",
+    "TextComponent",
     # Core implementations
     "ToolRegistry",
     "Agent",

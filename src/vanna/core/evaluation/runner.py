@@ -17,7 +17,7 @@ from .base import (
     AgentVariant,
     Evaluator,
 )
-from vanna.core import UiComponent
+from vanna.core import Component
 from vanna.core.user.request_context import RequestContext
 from vanna.core.observability import ObservabilityProvider
 
@@ -278,7 +278,7 @@ class EvaluationRunner:
         Returns:
             AgentResult with all captured data
         """
-        components: List[UiComponent] = []
+        components: List[Component] = []
         tool_calls: List[Dict[str, Any]] = []
         error: Optional[str] = None
 

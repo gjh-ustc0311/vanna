@@ -24,7 +24,7 @@ from dataclasses import dataclass
 if TYPE_CHECKING:
     from ..user.models import User
     from ..storage import Conversation
-    from ...components import UiComponent
+    from ...components import Component
     from ..agent.agent import Agent
 
 
@@ -32,13 +32,13 @@ if TYPE_CHECKING:
 class WorkflowResult:
     """Result from a workflow handler attempt.
 
-    When a workflow handles a message, it can optionally return UI components to stream
+    When a workflow handles a message, it can optionally return components to stream
     to the user and/or mutate the conversation state.
 
     Attributes:
         should_skip_llm: If True, the workflow handled the message and LLM processing is skipped.
                          If False, the message continues to the agent/LLM.
-        components: Optional UI components to stream back to the user.
+        components: Optional components to stream back to the user.
                     Can be a list or async generator for streaming responses.
         conversation_mutation: Optional async callback to modify conversation state
                                (e.g., clearing messages, adding system events).
@@ -47,7 +47,7 @@ class WorkflowResult:
         # Simple command response
         WorkflowResult(
             should_skip_llm=True,
-            components=[RichTextComponent(content="Help text here")]
+            components=[TextComponent(text="Help text here")]
         )
 
         # With conversation mutation
@@ -56,7 +56,7 @@ class WorkflowResult:
 
         WorkflowResult(
             should_skip_llm=True,
-            components=[StatusCardComponent(...)],
+            components=[TextComponent(text="Conversation cleared.")],
             conversation_mutation=clear_history
         )
 
@@ -66,7 +66,7 @@ class WorkflowResult:
 
     should_skip_llm: bool
     components: Optional[
-        Union[List["UiComponent"], AsyncGenerator["UiComponent", None]]
+        Union[List["Component"], AsyncGenerator["Component", None]]
     ] = None
     conversation_mutation: Optional[Callable[["Conversation"], Awaitable[None]]] = None
 
@@ -86,7 +86,7 @@ class WorkflowHandler(ABC):
     - State-based workflows (onboarding, surveys)
     - Custom quota enforcement with helpful messages
     - Deterministic report generation
-    - Starter UI (buttons, welcome messages) when conversation begins
+    - Starter text when a conversation begins
 
     Example:
         class CommandWorkflow(WorkflowHandler):
@@ -106,15 +106,15 @@ class WorkflowHandler(ABC):
                 if message.startswith("/report"):
                     tool = await agent.tool_registry.get_tool("generate_report")
                     result = await tool.execute(ToolContext(user=user), {})
-                    return WorkflowResult(should_skip_llm=True, components=[result.ui_component])
+                    components = [result.component] if result.component else None
+                    return WorkflowResult(should_skip_llm=True, components=components)
 
                 # Not handled, continue to agent
                 return WorkflowResult(should_skip_llm=False)
 
             async def get_starter_ui(self, agent, user, conversation):
                 return [
-                    RichTextComponent(content=f"Welcome {user.username}!"),
-                    ButtonComponent(label="Generate Report", value="/report"),
+                    TextComponent(text=f"Welcome {user.username}!"),
                 ]
 
         agent = Agent(
@@ -196,8 +196,8 @@ class WorkflowHandler(ABC):
 
     async def get_starter_ui(
         self, agent: "Agent", user: "User", conversation: "Conversation"
-    ) -> Optional[List["UiComponent"]]:
-        """Provide UI components when a conversation starts.
+    ) -> Optional[List["Component"]]:
+        """Provide components when a conversation starts.
 
         Override this method to show starter buttons, welcome messages,
         or quick actions when a new chat is opened by the user.
@@ -212,7 +212,7 @@ class WorkflowHandler(ABC):
             conversation: The new conversation (typically empty)
 
         Returns:
-            List of UI components to display, or None for no starter UI.
+            List of components to display, or None for no starter response.
             Components can include buttons, welcome text, quick actions, etc.
 
         Example:

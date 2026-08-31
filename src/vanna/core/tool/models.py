@@ -4,17 +4,15 @@ Tool domain models.
 This module contains data models for tool execution.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # Import AgentMemory at runtime for Pydantic model resolution
 from vanna.capabilities.agent_memory import AgentMemory
-
-if TYPE_CHECKING:
-    from ..components import UiComponent
-    from ..user.models import User
-    from ..observability import ObservabilityProvider
+from vanna.components import Component
+from ..observability import ObservabilityProvider
+from ..user.models import User
 
 
 class ToolCall(BaseModel):
@@ -28,14 +26,14 @@ class ToolCall(BaseModel):
 class ToolContext(BaseModel):
     """Context passed to all tool executions."""
 
-    user: "User"  # Forward reference to avoid circular import
+    user: User
     conversation_id: str
     request_id: str = Field(description="Unique request identifier for tracing")
     agent_memory: AgentMemory = Field(
         description="Agent memory for tool usage learning"
     )
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    observability_provider: Optional["ObservabilityProvider"] = Field(
+    observability_provider: Optional[ObservabilityProvider] = Field(
         default=None,
         description="Optional observability provider for metrics and spans",
     )
@@ -49,13 +47,15 @@ class ToolResult(BaseModel):
 
     Changes:
     - `result_for_llm`: string that will be sent back to the LLM.
-    - `ui_component`: optional UI payload for rendering in clients.
+    - `component`: optional UI payload for rendering in clients.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     success: bool = Field(description="Whether execution succeeded")
     result_for_llm: str = Field(description="String content to send back to the LLM")
-    ui_component: Optional["UiComponent"] = Field(
-        default=None, description="Optional UI component for rendering"
+    component: Optional[Component] = Field(
+        default=None, description="Optional component for rendering"
     )
     error: Optional[str] = Field(default=None, description="Error message if failed")
     metadata: Dict[str, Any] = Field(default_factory=dict)

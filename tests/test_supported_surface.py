@@ -71,15 +71,35 @@ def test_removed_packages_do_not_import(module_name):
         importlib.import_module(module_name)
 
 
-def test_core_evaluation_and_chart_protocol_remain_supported():
+def test_core_evaluation_and_three_component_protocol_are_supported():
     from vanna import EvaluationRunner, __version__
-    from vanna.components import ChartComponent
+    from vanna.components import DataFrameComponent, LinkComponent, TextComponent
 
-    chart = ChartComponent(chart_type="bar", data={"x": ["a"], "y": [1]})
+    components = [
+        TextComponent(text="answer"),
+        DataFrameComponent(columns=["value"], rows=[{"value": 1}]),
+        LinkComponent(url="/report", text="Report"),
+    ]
 
     assert EvaluationRunner is not None
-    assert chart.model_dump(mode="json")["type"] == "chart"
+    assert [component.type for component in components] == [
+        "text",
+        "dataframe",
+        "link",
+    ]
     assert __version__ == "3.0.0"
+
+
+def test_removed_component_modules_do_not_import():
+    for module_name in [
+        "vanna.components.rich.text",
+        "vanna.components.simple.text",
+        "vanna.core.rich_component",
+        "vanna.core.simple_component",
+        "vanna.core.component_manager",
+    ]:
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(module_name)
 
 
 def test_builtin_plotly_visualization_tool_is_removed():
@@ -118,6 +138,8 @@ async def test_run_sql_keeps_generic_file_output_without_chart_instruction(tmp_p
     )
 
     assert result.success
+    assert result.component is not None
+    assert result.component.type == "dataframe"
     assert "Results saved to file:" in result.result_for_llm
     assert "visualize" not in result.result_for_llm.lower()
     assert await file_system.read_file(result.metadata["output_file"], context)

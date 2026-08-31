@@ -1,22 +1,13 @@
-"""
-Web components for Vanna Agents.
+"""Bundled browser components for the version-matched Vanna chat protocol."""
 
-This module provides web components built with Lit that can be embedded
-in web applications to provide rich UI for Vanna agent interactions.
-"""
-
-import os
 from pathlib import Path
 from typing import Dict
 
 
 def get_component_files() -> Dict[str, Path]:
-    """Get paths to all web component files."""
+    """Return the browser assets shipped with the Python package."""
     component_dir = Path(__file__).parent
-    return {
-        "js": component_dir / "index.js",
-        "css": component_dir / "style.css",
-    }
+    return {"js": component_dir / "vanna-components.js"}
 
 
 def get_component_html() -> str:

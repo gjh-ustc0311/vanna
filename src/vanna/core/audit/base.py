@@ -16,7 +16,6 @@ from .models import (
     ToolAccessCheckEvent,
     ToolInvocationEvent,
     ToolResultEvent,
-    UiFeatureAccessCheckEvent,
 )
 
 if TYPE_CHECKING:
@@ -96,7 +95,6 @@ class AuditLogger(ABC):
         self,
         user: "User",
         tool_call: "ToolCall",
-        ui_features: List[str],
         context: "ToolContext",
         sanitize_parameters: bool = True,
     ) -> None:
@@ -105,7 +103,6 @@ class AuditLogger(ABC):
         Args:
             user: User invoking the tool
             tool_call: Tool call information
-            ui_features: List of UI features available to the user
             context: Tool execution context
             sanitize_parameters: Whether to sanitize sensitive parameters
         """
@@ -126,7 +123,6 @@ class AuditLogger(ABC):
             tool_name=tool_call.name,
             parameters=parameters,
             parameters_sanitized=sanitized,
-            ui_features_available=ui_features,
         )
         await self.log_event(event)
 
@@ -162,41 +158,9 @@ class AuditLogger(ABC):
                 if result.result_for_llm
                 else 0
             ),
-            ui_component_type=(
-                result.ui_component.__class__.__name__ if result.ui_component else None
+            component_type=(
+                result.component.type if result.component is not None else None
             ),
-        )
-        await self.log_event(event)
-
-    async def log_ui_feature_access(
-        self,
-        user: "User",
-        feature_name: str,
-        access_granted: bool,
-        required_groups: List[str],
-        conversation_id: str,
-        request_id: str,
-    ) -> None:
-        """Convenience method for logging UI feature access checks.
-
-        Args:
-            user: User attempting to access the feature
-            feature_name: Name of the UI feature
-            access_granted: Whether access was granted
-            required_groups: Groups required to access the feature
-            conversation_id: Conversation identifier
-            request_id: Request identifier
-        """
-        event = UiFeatureAccessCheckEvent(
-            user_id=user.id,
-            username=user.username,
-            user_email=user.email,
-            user_groups=user.group_memberships,
-            conversation_id=conversation_id,
-            request_id=request_id,
-            feature_name=feature_name,
-            access_granted=access_granted,
-            required_groups=required_groups,
         )
         await self.log_event(event)
 

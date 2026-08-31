@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   define: {
@@ -20,5 +20,8 @@ export default defineConfig({
   preview: {
     port: 9876,
     strictPort: true,
+  },
+  test: {
+    environment: 'jsdom',
   },
 });

@@ -36,7 +36,7 @@ flowchart LR
 4. Catalog 一次连接读取四组 `INFORMATION_SCHEMA` 元数据，验证三张 `BASE TABLE`，构建并缓存证据。
 5. Web Server 通过 `/login` 校验两个演示身份、设置 Cookie 并重定向，由服务端直接渲染登录态；`/logout` 删除 Cookie。该流程不依赖 JavaScript，但仍只是本地演示角色选择器。
 6. Factory 基于同一证据创建 Guard、Runner 和两个 Tool，再创建仅接受本地演示 Cookie 的用户解析器：两个演示身份都有 `xpd` 组，`admin@example.com` 额外具有 `admin` 组。
-7. Factory 注入 XPD 专属系统提示词，明确 XPD 产品身份、寒暄与身份问答口径及底层模型披露边界。普通用户消息继续交给 LLM/Tool 循环，不在 XPD 集成层做确定性问候或身份响应。
+7. Factory 注入 XPD 专属系统提示词，明确 XPD 产品身份、寒暄与身份问答口径及底层模型披露边界。无需 XPD 数据的安全通用任务由模型直接回答且不调用 XPD Tool；XPD 数据任务仍执行 Schema/SQL 门禁。普通用户消息继续交给 LLM/Tool 循环，不在 XPD 集成层增加关键词分类器或确定性响应改写。
 8. Factory 创建以 `datas/history_storage` 为工作目录相对路径的 File Store，并只接受 `[A-Za-z0-9_-]{1,128}` 格式的会话 ID。已存在会话的所有者不匹配时拒绝覆盖。
 9. 只有以上步骤全部成功，CLI 才实例化并启动 Web/API Server。
 

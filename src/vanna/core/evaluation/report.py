@@ -194,9 +194,8 @@ class ComparisonReport:
     def save_html(self, path: str) -> None:
         """Save interactive HTML comparison report.
 
-        Generates a rich HTML report with:
+        Generates an HTML report with:
         - Summary statistics
-        - Charts comparing variants
         - Side-by-side test case results
         """
         html = self._generate_html()

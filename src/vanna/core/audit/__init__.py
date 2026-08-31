@@ -13,7 +13,6 @@ from .models import (
     ToolAccessCheckEvent,
     ToolInvocationEvent,
     ToolResultEvent,
-    UiFeatureAccessCheckEvent,
 )
 
 __all__ = [
@@ -23,6 +22,5 @@ __all__ = [
     "ToolAccessCheckEvent",
     "ToolInvocationEvent",
     "ToolResultEvent",
-    "UiFeatureAccessCheckEvent",
     "AiResponseEvent",
 ]

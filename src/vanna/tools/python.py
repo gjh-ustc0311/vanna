@@ -8,13 +8,6 @@ from typing import Any, List, Optional, Sequence, Type
 
 from pydantic import BaseModel, Field
 
-from vanna.components import (
-    UiComponent,
-    CardComponent,
-    ComponentType,
-    NotificationComponent,
-    SimpleTextComponent,
-)
 from vanna.core.tool import Tool, ToolContext, ToolResult
 
 from .file_system import CommandResult, FileSystem, LocalFileSystem
@@ -187,21 +180,10 @@ def _result_from_command(
         blocks.append("(no output)")
 
     content = "\n\n".join(blocks)
-    card_status = "success" if success else "error"
-    component = CardComponent(
-        type=ComponentType.CARD,
-        title="Command Result",
-        content=content,
-        status=card_status,
-    )
-
     return ToolResult(
         success=success,
         result_for_llm=f"{summary}\n\n{content}",
-        ui_component=UiComponent(
-            rich_component=component,
-            simple_component=SimpleTextComponent(text=summary),
-        ),
+        component=None,
         error=None if success else content,
     )
 
@@ -210,13 +192,6 @@ def _error_result(message: str) -> ToolResult:
     return ToolResult(
         success=False,
         result_for_llm=message,
-        ui_component=UiComponent(
-            rich_component=NotificationComponent(
-                type=ComponentType.NOTIFICATION,
-                level="error",
-                message=message,
-            ),
-            simple_component=SimpleTextComponent(text=message),
-        ),
+        component=None,
         error=message,
     )

@@ -152,5 +152,7 @@ async def test_tools_require_same_turn_schema_and_limit_llm_rows(
     assert search.success is True
     llm_result = json.loads(result.result_for_llm)
     assert len(llm_result["rows"]) == 20
-    assert result.ui_component.rich_component.exportable is False
-    assert len(result.ui_component.rich_component.rows) == 25
+    assert result.component is not None
+    assert result.component.type == "dataframe"
+    assert len(result.component.rows) == 25
+    assert result.metadata["exportable"] is False

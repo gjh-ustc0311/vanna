@@ -47,7 +47,7 @@ class Tool(ABC, Generic[T]):
             args: Validated tool arguments
 
         Returns:
-            ToolResult with success status, result for LLM, and optional UI component
+            ToolResult with success status, result for LLM, and optional component
         """
         pass
 

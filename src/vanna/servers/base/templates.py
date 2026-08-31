@@ -9,30 +9,27 @@ from typing import Optional
 def get_vanna_component_script(
     dev_mode: bool = False,
     static_path: str = "/static",
-    cdn_url: str = "https://img.vanna.ai/vanna-components.js",
+    cdn_url: Optional[str] = None,
 ) -> str:
     """Get the script tag for loading Vanna web components.
 
     Args:
-        dev_mode: If True, load from local static files
+        dev_mode: If True, force local static files
         static_path: Path to static assets in dev mode
-        cdn_url: CDN URL for production
+        cdn_url: Optional explicit CDN override. By default, use the bundled asset.
 
     Returns:
         HTML script tag for loading components
     """
-    if dev_mode:
-        return (
-            f'<script type="module" src="{static_path}/vanna-components.js"></script>'
-        )
-    else:
+    if cdn_url and not dev_mode:
         return f'<script type="module" src="{cdn_url}"></script>'
+    return f'<script type="module" src="{static_path}/vanna-components.js"></script>'
 
 
 def get_index_html(
     dev_mode: bool = False,
     static_path: str = "/static",
-    cdn_url: str = "https://img.vanna.ai/vanna-components.js",
+    cdn_url: Optional[str] = None,
     api_base_url: str = "",
     logged_in_email: Optional[str] = None,
 ) -> str:
@@ -41,7 +38,7 @@ def get_index_html(
     Args:
         dev_mode: If True, load components from local static files
         static_path: Path to static assets in dev mode
-        cdn_url: CDN URL for production components
+        cdn_url: Optional explicit CDN override for the components
         api_base_url: Base URL for API endpoints
         logged_in_email: Validated local demo identity selected by the server
 
@@ -201,8 +198,8 @@ def get_index_html(
             <div class="bg-white rounded-xl shadow-lg h-[600px] overflow-hidden border border-vanna-teal/30">
                 <vanna-chat
                     api-base="{api_base_url}"
-                    sse-endpoint="{api_base_url}/api/vanna/v2/chat_sse"
-                    poll-endpoint="{api_base_url}/api/vanna/v2/chat_poll">
+                    sse-endpoint="{api_base_url}/api/vanna/v3/chat_sse"
+                    poll-endpoint="{api_base_url}/api/vanna/v3/chat_poll">
                 </vanna-chat>
             </div>
 
@@ -210,10 +207,10 @@ def get_index_html(
                 <h3 class="text-lg font-semibold text-vanna-navy mb-3 font-serif">API Endpoints</h3>
                 <ul class="space-y-2">
                     <li class="p-2 bg-vanna-cream/50 rounded font-mono text-sm">
-                        <span class="font-bold text-vanna-teal mr-2">POST</span>{api_base_url}/api/vanna/v2/chat_sse - Server-Sent Events streaming
+                        <span class="font-bold text-vanna-teal mr-2">POST</span>{api_base_url}/api/vanna/v3/chat_sse - Server-Sent Events streaming
                     </li>
                     <li class="p-2 bg-vanna-cream/50 rounded font-mono text-sm">
-                        <span class="font-bold text-vanna-teal mr-2">POST</span>{api_base_url}/api/vanna/v2/chat_poll - Request/response polling
+                        <span class="font-bold text-vanna-teal mr-2">POST</span>{api_base_url}/api/vanna/v3/chat_poll - Request/response polling
                     </li>
                     <li class="p-2 bg-vanna-cream/50 rounded font-mono text-sm">
                         <span class="font-bold text-vanna-teal mr-2">GET</span>{api_base_url}/health - Health check
@@ -224,37 +221,6 @@ def get_index_html(
     </div>
 
     <script>
-        // Artifact demo event listener
-        document.addEventListener('DOMContentLoaded', () => {{
-            const vannaChat = document.querySelector('vanna-chat');
-
-            if (vannaChat) {{
-                // Add artifact event listener to demonstrate external rendering
-                vannaChat.addEventListener('artifact-opened', (event) => {{
-                    const {{ artifactId, type, title, trigger }} = event.detail;
-
-                    console.log('🎨 Artifact Event:', {{ artifactId, type, title, trigger }});
-
-                    // For demo: open all artifacts externally
-                    setTimeout(() => {{
-                        const newWindow = window.open('', '_blank', 'width=900,height=700');
-                        if (newWindow) {{
-                            newWindow.document.write(event.detail.getStandaloneHTML());
-                            newWindow.document.close();
-                            newWindow.document.title = title || 'Vanna Artifact';
-                            console.log(`📱 Opened ${{title}} in new window`);
-                        }}
-                    }}, 100);
-
-                    // Prevent default in-chat rendering
-                    event.detail.preventDefault();
-                    console.log('✋ Showing placeholder in chat instead of full artifact');
-                }});
-
-                console.log('🎯 Artifact demo mode: All artifacts will open externally');
-            }}
-        }});
-
         // Fallback if web component doesn't load
         if (!customElements.get('vanna-chat')) {{
             setTimeout(() => {{
@@ -264,7 +230,7 @@ def get_index_html(
                             <h3 class="text-xl font-semibold mb-2">Vanna Chat Component</h3>
                             <p class="mb-2">Web component failed to load. Please check your connection.</p>
                             <p class="text-sm text-gray-400">
-                                {("Loading from: local static assets" if dev_mode else f"Loading from: {cdn_url}")}
+                                {("Loading from: local static assets" if not cdn_url else f"Loading from: {cdn_url}")}
                             </p>
                         </div>
                     `;
@@ -276,5 +242,5 @@ def get_index_html(
 </html>"""
 
 
-# Backward compatibility - default production HTML
+# Default production HTML
 INDEX_HTML = get_index_html()

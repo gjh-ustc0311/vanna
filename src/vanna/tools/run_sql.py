@@ -1,18 +1,52 @@
 """Generic SQL query execution tool with dependency injection."""
 
-from typing import Any, Dict, List, Optional, Type, cast
+import datetime as dt
+import decimal
+import math
+from typing import Any, Optional, Type
 import uuid
+
+import pandas as pd
+
 from vanna.core.tool import Tool, ToolContext, ToolResult
-from vanna.components import (
-    UiComponent,
-    DataFrameComponent,
-    NotificationComponent,
-    ComponentType,
-    SimpleTextComponent,
-)
+from vanna.components import DataFrameComponent, JsonScalar
 from vanna.capabilities.sql_runner import SqlRunner, RunSqlToolArgs
 from vanna.capabilities.file_system import FileSystem
 from vanna.integrations.local import LocalFileSystem
+
+
+def _to_json_scalar(value: Any) -> JsonScalar:
+    """Normalize dataframe cell values for the public component contract."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, decimal.Decimal):
+        return str(value)
+    if isinstance(value, (dt.datetime, dt.date, dt.time)):
+        return value.isoformat()
+    if isinstance(value, dt.timedelta):
+        return str(value)
+
+    try:
+        if bool(pd.isna(value)):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _to_json_scalar(item())
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        if value != value:
+            return None
+    except (TypeError, ValueError):
+        pass
+    return str(value)
 
 
 class RunSqlTool(Tool[RunSqlToolArgs]):
@@ -66,14 +100,10 @@ class RunSqlTool(Tool[RunSqlToolArgs]):
                 # Handle SELECT queries with results
                 if df.empty:
                     result = "Query executed successfully. No rows returned."
-                    ui_component = UiComponent(
-                        rich_component=DataFrameComponent(
-                            rows=[],
-                            columns=[],
-                            title="Query Results",
-                            description="No rows returned",
-                        ),
-                        simple_component=SimpleTextComponent(text=result),
+                    component = DataFrameComponent(
+                        rows=[],
+                        columns=[],
+                        title="Query Results",
                     )
                     metadata = {
                         "row_count": 0,
@@ -83,8 +113,15 @@ class RunSqlTool(Tool[RunSqlToolArgs]):
                     }
                 else:
                     # Convert DataFrame to records
-                    results_data = df.to_dict("records")
-                    columns = df.columns.tolist()
+                    raw_results = df.to_dict("records")
+                    results_data = [
+                        {
+                            str(column): _to_json_scalar(value)
+                            for column, value in record.items()
+                        }
+                        for record in raw_results
+                    ]
+                    columns = [str(column) for column in df.columns.tolist()]
                     row_count = len(df)
 
                     # Write DataFrame to CSV file for downstream tools
@@ -106,15 +143,9 @@ class RunSqlTool(Tool[RunSqlToolArgs]):
                     result = f"{results_preview}\n\nResults saved to file: {filename}"
 
                     # Create DataFrame component for UI
-                    dataframe_component = DataFrameComponent.from_records(
-                        records=cast(List[Dict[str, Any]], results_data),
+                    component = DataFrameComponent.from_records(
+                        records=results_data,
                         title="Query Results",
-                        description=f"SQL query returned {row_count} rows with {len(columns)} columns",
-                    )
-
-                    ui_component = UiComponent(
-                        rich_component=dataframe_component,
-                        simple_component=SimpleTextComponent(text=result),
                     )
 
                     metadata = {
@@ -133,17 +164,12 @@ class RunSqlTool(Tool[RunSqlToolArgs]):
                 )
 
                 metadata = {"rows_affected": rows_affected, "query_type": query_type}
-                ui_component = UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION, level="success", message=result
-                    ),
-                    simple_component=SimpleTextComponent(text=result),
-                )
+                component = None
 
             return ToolResult(
                 success=True,
                 result_for_llm=result,
-                ui_component=ui_component,
+                component=component,
                 metadata=metadata,
             )
 
@@ -152,14 +178,7 @@ class RunSqlTool(Tool[RunSqlToolArgs]):
             return ToolResult(
                 success=False,
                 result_for_llm=error_message,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="error",
-                        message=error_message,
-                    ),
-                    simple_component=SimpleTextComponent(text=error_message),
-                ),
+                component=None,
                 error=str(e),
                 metadata={"error_type": "sql_error"},
             )

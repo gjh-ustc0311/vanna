@@ -1,5 +1,8 @@
 # Vanna 3.0 支持面精简 PRD
 
+> 历史需求：组件范围已由 [004 精简组件 PRD](./support-xpd-tables-004.md)
+> 取代。
+
 ## 1. 背景与目标
 
 001 期建立了 XPD 三表只读问答链路，002 期把 HTTP 传输收敛为 FastAPI、SSE

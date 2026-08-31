@@ -17,13 +17,6 @@ import hashlib
 from pydantic import BaseModel, Field, model_validator
 
 from vanna.core.tool import Tool, ToolContext, ToolResult
-from vanna.components import (
-    UiComponent,
-    CardComponent,
-    NotificationComponent,
-    ComponentType,
-    SimpleTextComponent,
-)
 
 MAX_SEARCH_FILE_BYTES = 1_000_000
 FILENAME_MATCH_SNIPPET = "[filename match]"
@@ -382,14 +375,7 @@ class SearchFilesTool(Tool[SearchFilesArgs]):
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="error",
-                        message=error_msg,
-                    ),
-                    simple_component=SimpleTextComponent(text=error_msg),
-                ),
+                component=None,
                 error=str(exc),
             )
 
@@ -398,14 +384,7 @@ class SearchFilesTool(Tool[SearchFilesArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=message,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="info",
-                        message=message,
-                    ),
-                    simple_component=SimpleTextComponent(text=message),
-                ),
+                component=None,
             )
 
         lines: List[str] = []
@@ -432,14 +411,7 @@ class SearchFilesTool(Tool[SearchFilesArgs]):
         return ToolResult(
             success=True,
             result_for_llm=f"{summary}\n{content}",
-            ui_component=UiComponent(
-                rich_component=CardComponent(
-                    type=ComponentType.CARD,
-                    title=f"Search results for '{args.query}'",
-                    content=content,
-                ),
-                simple_component=SimpleTextComponent(text=summary),
-            ),
+            component=None,
         )
 
 
@@ -483,28 +455,14 @@ class ListFilesTool(Tool[ListFilesArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=result,
-                ui_component=UiComponent(
-                    rich_component=CardComponent(
-                        type=ComponentType.CARD,
-                        title=f"Files in {args.directory}",
-                        content=files_list,
-                    ),
-                    simple_component=SimpleTextComponent(text=result),
-                ),
+                component=None,
             )
         except Exception as e:
             error_msg = f"Error listing files: {str(e)}"
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="error",
-                        message=error_msg,
-                    ),
-                    simple_component=SimpleTextComponent(text=error_msg),
-                ),
+                component=None,
                 error=str(e),
             )
 
@@ -541,30 +499,14 @@ class ReadFileTool(Tool[ReadFileArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=result,
-                ui_component=UiComponent(
-                    rich_component=CardComponent(
-                        type=ComponentType.CARD,
-                        title=f"Contents of {args.filename}",
-                        content=content,
-                    ),
-                    simple_component=SimpleTextComponent(
-                        text=f"File content:\n{content}"
-                    ),
-                ),
+                component=None,
             )
         except Exception as e:
             error_msg = f"Error reading file: {str(e)}"
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="error",
-                        message=error_msg,
-                    ),
-                    simple_component=SimpleTextComponent(text=error_msg),
-                ),
+                component=None,
                 error=str(e),
             )
 
@@ -608,30 +550,14 @@ class WriteFileTool(Tool[WriteFileArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=success_msg,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="success",
-                        message=f"File '{args.filename}' written successfully",
-                    ),
-                    simple_component=SimpleTextComponent(
-                        text=f"Wrote to {args.filename}"
-                    ),
-                ),
+                component=None,
             )
         except Exception as e:
             error_msg = f"Error writing file: {str(e)}"
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="error",
-                        message=error_msg,
-                    ),
-                    simple_component=SimpleTextComponent(text=error_msg),
-                ),
+                component=None,
                 error=str(e),
             )
 
@@ -698,14 +624,7 @@ class EditFileTool(Tool[EditFileArgs]):
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="error",
-                        message=error_msg,
-                    ),
-                    simple_component=SimpleTextComponent(text=error_msg),
-                ),
+                component=None,
                 error=str(exc),
             )
 
@@ -784,14 +703,7 @@ class EditFileTool(Tool[EditFileArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=message,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="info",
-                        message=message,
-                    ),
-                    simple_component=SimpleTextComponent(text=message),
-                ),
+                component=None,
             )
 
         try:
@@ -803,14 +715,7 @@ class EditFileTool(Tool[EditFileArgs]):
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                ui_component=UiComponent(
-                    rich_component=NotificationComponent(
-                        type=ComponentType.NOTIFICATION,
-                        level="error",
-                        message=error_msg,
-                    ),
-                    simple_component=SimpleTextComponent(text=error_msg),
-                ),
+                component=None,
                 error=str(exc),
             )
 
@@ -835,14 +740,7 @@ class EditFileTool(Tool[EditFileArgs]):
         return ToolResult(
             success=True,
             result_for_llm=f"{summary}\n\n{diff_text}",
-            ui_component=UiComponent(
-                rich_component=CardComponent(
-                    type=ComponentType.CARD,
-                    title=f"Edited {args.filename}",
-                    content=diff_text,
-                ),
-                simple_component=SimpleTextComponent(text=summary),
-            ),
+            component=None,
         )
 
     def _range_error(
@@ -852,14 +750,7 @@ class EditFileTool(Tool[EditFileArgs]):
         return ToolResult(
             success=False,
             result_for_llm=error_msg,
-            ui_component=UiComponent(
-                rich_component=NotificationComponent(
-                    type=ComponentType.NOTIFICATION,
-                    level="error",
-                    message=error_msg,
-                ),
-                simple_component=SimpleTextComponent(text=error_msg),
-            ),
+            component=None,
             error=message,
         )
 

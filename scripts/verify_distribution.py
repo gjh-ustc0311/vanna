@@ -91,6 +91,7 @@ def _integration_names(names: list[str], prefix: str) -> set[str]:
 def verify_wheel(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
+        assert "vanna/web_components/vanna-components.js" in names
         assert not any(
             name.startswith(prefix)
             for name in names
@@ -118,6 +119,7 @@ def verify_sdist(sdist: Path) -> None:
         names = archive.getnames()
 
     normalized = [name.split("/", 1)[1] for name in names if "/" in name]
+    assert "src/vanna/web_components/vanna-components.js" in normalized
     assert not any(
         name.startswith(prefix)
         for name in normalized

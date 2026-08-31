@@ -1,92 +1,17 @@
-"""UI Component system for Vanna Agents."""
+"""Supported UI components."""
 
-# Base component
-from .base import UiComponent
-
-# Simple components
-from .simple import (
-    SimpleComponent,
-    SimpleComponentType,
-    SimpleTextComponent,
-    SimpleImageComponent,
-    SimpleLinkComponent,
-)
-
-# Rich components - re-export all
-from .rich import (
-    # Base
-    RichComponent,
-    ComponentType,
-    ComponentLifecycle,
-    # Text
-    RichTextComponent,
-    # Data
+from .models import (
+    Component,
     DataFrameComponent,
-    ChartComponent,
-    # Feedback
-    NotificationComponent,
-    StatusCardComponent,
-    ProgressBarComponent,
-    ProgressDisplayComponent,
-    StatusIndicatorComponent,
-    LogViewerComponent,
-    LogEntry,
-    BadgeComponent,
-    IconTextComponent,
-    # Interactive
-    TaskListComponent,
-    Task,
-    StatusBarUpdateComponent,
-    TaskTrackerUpdateComponent,
-    ChatInputUpdateComponent,
-    TaskOperation,
-    ButtonComponent,
-    ButtonGroupComponent,
-    # Containers
-    CardComponent,
-    # Specialized
-    ArtifactComponent,
+    JsonScalar,
+    LinkComponent,
+    TextComponent,
 )
 
 __all__ = [
-    # Base
-    "UiComponent",
-    # Simple components
-    "SimpleComponent",
-    "SimpleComponentType",
-    "SimpleTextComponent",
-    "SimpleImageComponent",
-    "SimpleLinkComponent",
-    # Rich components - Base
-    "RichComponent",
-    "ComponentType",
-    "ComponentLifecycle",
-    # Rich components - Text
-    "RichTextComponent",
-    # Rich components - Data
+    "Component",
     "DataFrameComponent",
-    "ChartComponent",
-    # Rich components - Feedback
-    "NotificationComponent",
-    "StatusCardComponent",
-    "ProgressBarComponent",
-    "ProgressDisplayComponent",
-    "StatusIndicatorComponent",
-    "LogViewerComponent",
-    "LogEntry",
-    "BadgeComponent",
-    "IconTextComponent",
-    # Rich components - Interactive
-    "TaskListComponent",
-    "Task",
-    "StatusBarUpdateComponent",
-    "TaskTrackerUpdateComponent",
-    "ChatInputUpdateComponent",
-    "TaskOperation",
-    "ButtonComponent",
-    "ButtonGroupComponent",
-    # Rich components - Containers
-    "CardComponent",
-    # Rich components - Specialized
-    "ArtifactComponent",
+    "JsonScalar",
+    "LinkComponent",
+    "TextComponent",
 ]
