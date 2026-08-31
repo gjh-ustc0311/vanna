@@ -101,7 +101,10 @@ def make_runner(database_settings, schema_evidence, rows, tmp_path):
 async def test_runner_boundary_collection(
     database_settings, schema_evidence, tmp_path, row_count
 ):
-    rows = [(f"item-{index}", Decimal("1.20")) for index in range(row_count)]
+    first_item_id = 1_000_000_000_000
+    rows = [
+        (first_item_id + index, Decimal("1.20")) for index in range(row_count)
+    ]
     runner, cursor, connection, store = make_runner(
         database_settings, schema_evidence, rows, tmp_path
     )
@@ -116,6 +119,8 @@ async def test_runner_boundary_collection(
     assert (result.local_artifact is not None) is (row_count > 30)
     assert set(cursor.fetch_sizes) <= {500}
     assert connection.rolled_back is True
+    if result.analysis_rows:
+        assert result.analysis_rows[0]["item_id"] == first_item_id
     if result.local_artifact is not None:
         workbook = load_workbook(store.path_for(result.local_artifact), read_only=True)
         try:
@@ -124,6 +129,7 @@ async def test_runner_boundary_collection(
             workbook.close()
         assert values[0] == ("item_id", "pay_amt")
         assert len(values) == row_count + 1
+        assert values[1][0] == str(first_item_id)
         assert values[1][1] == 1.2
 
 

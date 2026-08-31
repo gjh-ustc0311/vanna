@@ -61,6 +61,40 @@ describe('VannaApiClient', () => {
     expect('component' in chunks[0] && chunks[0].component.type).toBe('text');
   });
 
+  it('ignores chunked heartbeat comments and cancels an abandoned stream', async () => {
+    const encoder = new TextEncoder();
+    let cancelled = false;
+    const payload = JSON.stringify({
+      component: { type: 'text', text: 'ok' },
+      conversation_id: 'c1',
+      request_id: 'r1',
+      timestamp: 1,
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(': heart'));
+        controller.enqueue(encoder.encode('beat\n\n'));
+        controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(chatResponse(body, { status: 200 }));
+
+    const chunks = [];
+    for await (const chunk of new VannaApiClient().streamChat(
+      { message: 'hello' }, CHAT_HEADERS,
+    )) {
+      chunks.push(chunk);
+      break;
+    }
+
+    expect(chunks).toHaveLength(1);
+    expect('component' in chunks[0] && chunks[0].component.type).toBe('text');
+    expect(cancelled).toBe(true);
+  });
+
   it('supports server trace fallback when the client omits X-Trace-Id', async () => {
     const headers = { requestId: 'r1', userId: '123' };
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
@@ -192,6 +226,16 @@ describe('VannaApiClient', () => {
       }
     };
     await expect(incomplete()).rejects.toThrow('before [DONE]');
+
+    fetchMock.mockResolvedValueOnce(chatResponse(': heartbeat\n\n', { status: 200 }));
+    const heartbeatOnly = async () => {
+      for await (const payload of new VannaApiClient().streamChat(
+        { message: 'hello' }, CHAT_HEADERS,
+      )) {
+        void payload;
+      }
+    };
+    await expect(heartbeatOnly()).rejects.toThrow('before [DONE]');
   });
 
   it('rejects reserved custom headers and mismatched response correlation', async () => {

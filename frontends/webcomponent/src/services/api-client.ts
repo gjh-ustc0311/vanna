@@ -221,6 +221,11 @@ export class VannaApiClient {
       }
       throw new VannaApiError('The server ended the stream before [DONE].');
     } finally {
+      try {
+        await reader.cancel();
+      } catch {
+        // Preserve the original stream result or protocol error.
+      }
       reader.releaseLock();
     }
   }

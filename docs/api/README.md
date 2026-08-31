@@ -53,5 +53,5 @@ Only three component payloads are supported:
 Progress is a separate top-level envelope and never expands the component union or
 appears in polling results.
 
-See [SSE and polling contract](./chat_sse.md) for complete envelopes, errors and
-client behavior.
+See [SSE and polling contract](./chat_sse.md) for complete envelopes, 15-second
+idle heartbeat comments, errors and client behavior.

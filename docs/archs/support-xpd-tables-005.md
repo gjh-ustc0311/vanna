@@ -151,6 +151,8 @@ XLSX writer 使用 openpyxl write-only workbook，以避免为 20,000 行构造�
 值处理规则：
 
 - null 保持空单元格；布尔、有限整数/浮点保留数值类型；
+- 列名精确为 `item_id` 或 `商品ID` 的非空值按文本标识符写入并使用文本格式，避免科学
+  计数法展示和 Excel 大整数精度丢失；
 - Decimal 保留精度，日期时间转换为上海时区的无时区 Excel datetime；
 - bytes/memoryview 转为带 `base64:` 前缀的文本；
 - 其他对象转换为清理后的字符串；

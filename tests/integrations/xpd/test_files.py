@@ -68,6 +68,36 @@ def test_xlsx_writer_sanitizes_cells_and_preserves_supported_types(tmp_path):
     assert row[5] == "'  =SUM(A1:A2)"
 
 
+@pytest.mark.parametrize("item_id_column", ["item_id", "商品ID"])
+def test_xlsx_writer_exports_item_id_alias_as_exact_text(tmp_path, item_id_column):
+    path = tmp_path / "result.xlsx"
+    writer = XpdXlsxWriter(path, [item_id_column, "live_session_id", "count"])
+    writer.append((601137401884, 42, 7))
+    writer.append((9223372036854775807, 43, 8))
+    writer.append((None, 44, 9))
+    writer.append(("  =1+1", 45, 10))
+    assert writer.finish() == 4
+
+    workbook = load_workbook(path, data_only=False)
+    try:
+        sheet = workbook["查询结果"]
+        assert sheet["A2"].value == "601137401884"
+        assert sheet["A3"].value == "9223372036854775807"
+        assert sheet["A4"].value is None
+        assert sheet["A5"].value == "'  =1+1"
+        assert sheet["A2"].data_type == "s"
+        assert sheet["A3"].data_type == "s"
+        assert sheet["A2"].number_format == "@"
+        assert sheet["A3"].number_format == "@"
+        assert sheet.column_dimensions["A"].width == 22
+        assert sheet["B2"].value == 42
+        assert sheet["B2"].data_type == "n"
+        assert sheet["C2"].value == 7
+        assert sheet["C2"].data_type == "n"
+    finally:
+        workbook.close()
+
+
 def test_xlsx_writer_fails_safely_for_oversized_text(tmp_path):
     path = tmp_path / "result.xlsx"
     writer = XpdXlsxWriter(path, ["value"])

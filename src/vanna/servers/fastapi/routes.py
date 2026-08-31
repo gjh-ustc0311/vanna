@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import traceback
 import uuid
+from contextlib import suppress
 from logging import Logger
-from typing import Annotated, Any, AsyncGenerator, Dict, Optional
+from typing import (
+    Annotated,
+    Any,
+    AsyncGenerator,
+    AsyncIterator,
+    Dict,
+    Optional,
+    TypeVar,
+)
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -36,7 +46,47 @@ from .xpd_logging import log_xpd_chat_sse_event
 
 
 _CHAT_PATHS = frozenset({"/api/vanna/v3/chat_sse", "/api/vanna/v3/chat_poll"})
+_CHAT_SSE_HEARTBEAT_SECONDS = 15.0
+_CHAT_SSE_HEARTBEAT_FRAME = ": heartbeat\n\n"
 _HeaderDependency = Annotated[ChatRequestHeaders, Depends(require_chat_request_headers)]
+_StreamItem = TypeVar("_StreamItem")
+
+
+async def _iterate_with_heartbeat(
+    source: AsyncIterator[_StreamItem],
+    *,
+    interval_seconds: float,
+) -> AsyncGenerator[Optional[_StreamItem], None]:
+    """Yield ``None`` while an async iterator is idle without cancelling it."""
+
+    if interval_seconds <= 0:
+        raise ValueError("heartbeat interval must be positive")
+
+    iterator = source.__aiter__()
+    pending = asyncio.ensure_future(iterator.__anext__())
+    try:
+        while True:
+            done, _ = await asyncio.wait((pending,), timeout=interval_seconds)
+            if not done:
+                yield None
+                continue
+
+            try:
+                item = pending.result()
+            except StopAsyncIteration:
+                return
+
+            yield item
+            pending = asyncio.ensure_future(iterator.__anext__())
+    finally:
+        if not pending.done():
+            pending.cancel()
+            with suppress(asyncio.CancelledError):
+                await pending
+
+        close = getattr(iterator, "aclose", None)
+        if close is not None:
+            await close()
 
 
 def _chat_error_response(
@@ -218,7 +268,15 @@ def register_chat_routes(
                 handle_events = getattr(chat_handler, "handle_events", None)
                 if handle_events is None:
                     handle_events = chat_handler.handle_stream
-                async for stream_item in handle_events(chat_request):
+                event_source = handle_events(chat_request)
+                async for stream_item in _iterate_with_heartbeat(
+                    event_source,
+                    interval_seconds=_CHAT_SSE_HEARTBEAT_SECONDS,
+                ):
+                    if stream_item is None:
+                        yield _CHAT_SSE_HEARTBEAT_FRAME
+                        continue
+
                     item_json = stream_item.model_dump_json()
                     if chat_sse_logger is not None:
                         log_xpd_chat_sse_event(

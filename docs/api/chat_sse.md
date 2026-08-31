@@ -131,6 +131,8 @@ ID, percentage or completed state; `[DONE]` is the completion signal.
 ## SSE response
 
 ```text
+: heartbeat
+
 data: {"progress":{"stage":"analyzing","message":"正在分析问题…"},"conversation_id":"conv_123","request_id":"req_123","timestamp":1788115199.0}
 
 data: {"component":{"type":"text","text":"完成"},"conversation_id":"conv_123","request_id":"req_123","timestamp":1788115200.0}
@@ -139,8 +141,17 @@ data: [DONE]
 
 ```
 
-Each `data:` event contains exactly one progress, component or error envelope.
+After 15 seconds with no outbound SSE bytes, the server writes the comment frame
+`: heartbeat\n\n`. Any progress, component, error or heartbeat frame restarts the
+idle timer. Comments contain no JSON or correlation values and clients must ignore
+them; they are transport keepalives, not application events. An immediately
+completed stream does not emit a heartbeat.
+
+Each application `data:` event contains exactly one progress, component or error
+envelope.
 `[DONE]` terminates a complete stream; EOF before `[DONE]` is a transport failure.
+No heartbeat is sent after an error followed by `[DONE]`, after normal `[DONE]`, or
+on polling responses and pre-stream JSON errors.
 
 If execution fails after the response has started, the server emits a safe transport
 error and then `[DONE]`:
@@ -186,9 +197,10 @@ A polling execution failure returns HTTP 500 with the transport error envelope.
 
 `<vanna-chat>` uses SSE first. It uses polling only when SSE fails before a valid
 payload is received; progress counts as a valid payload, so a request that has begun
-is never replayed through polling. The latest progress message replaces one local
-status and is cleared on `[DONE]` or failure. Unknown component types, unknown
-progress stages and malformed envelopes fail closed.
+is never replayed through polling. Heartbeat comments do not count as valid payloads,
+so heartbeat-only EOF still permits polling fallback. The latest progress message
+replaces one local status and is cleared on `[DONE]` or failure. Unknown component
+types, unknown progress stages and malformed envelopes fail closed.
 
 The client generates one Request ID per logical turn. An SSE-to-Poll fallback reuses
 that Request ID but creates a new Trace ID. This correlation behavior is not an

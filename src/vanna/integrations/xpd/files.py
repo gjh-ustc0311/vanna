@@ -41,6 +41,7 @@ _SHANGHAI = ZoneInfo("Asia/Shanghai")
 _OWNER_DIRECTORY_PATTERN = re.compile(r"[0-9a-f]{16}")
 _ILLEGAL_XLSX_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _FORMULA_PREFIXES = ("=", "+", "-", "@")
+_XLSX_ITEM_ID_COLUMNS = frozenset({"item_id", "商品ID"})
 
 logger = logging.getLogger(__name__)
 
@@ -243,8 +244,13 @@ class XpdXlsxWriter:
         self._worksheet.freeze_panes = "A2"
         self._worksheet.sheet_view.showGridLines = False
 
-        for index, header in enumerate(headers, start=1):
-            width = 22 if "时间" in header else 14 if "日期" in header else 16
+        for index, (column, header) in enumerate(
+            zip(self.columns, headers), start=1
+        ):
+            if column in _XLSX_ITEM_ID_COLUMNS:
+                width = 22
+            else:
+                width = 22 if "时间" in header else 14 if "日期" in header else 16
             self._worksheet.column_dimensions[get_column_letter(index)].width = width
         header_fill = PatternFill(fill_type="solid", fgColor="1F4E78")
         header_cells = []
@@ -266,9 +272,15 @@ class XpdXlsxWriter:
             if len(values) != len(self.columns):
                 raise XpdFileGenerationError("XLSX row does not match its columns.")
         cells: List[Any] = []
-        for value in values:
+        for column, value in zip(self.columns, values):
             normalized = _xlsx_cell_value(value)
-            if isinstance(normalized, datetime):
+            if column in _XLSX_ITEM_ID_COLUMNS and normalized is not None:
+                cell = self._write_only_cell(
+                    self._worksheet, value=_safe_xlsx_text(normalized)
+                )
+                cell.number_format = "@"
+                cells.append(cell)
+            elif isinstance(normalized, datetime):
                 cell = self._write_only_cell(self._worksheet, value=normalized)
                 cell.number_format = "yyyy-mm-dd hh:mm:ss"
                 cells.append(cell)

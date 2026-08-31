@@ -32,7 +32,7 @@ class OpenAILlmService(LlmService):
         api_key: API key; falls back to env `OPENAI_API_KEY`.
         organization: Optional org; env `OPENAI_ORG` if unset.
         base_url: Optional custom base URL; env `OPENAI_BASE_URL` if unset.
-        extra_client_kwargs: Extra kwargs forwarded to `openai.OpenAI()`.
+        extra_client_kwargs: Extra kwargs forwarded to `openai.AsyncOpenAI()`.
     """
 
     def __init__(
@@ -44,7 +44,7 @@ class OpenAILlmService(LlmService):
         **extra_client_kwargs: Any,
     ) -> None:
         try:
-            from openai import OpenAI
+            from openai import AsyncOpenAI
         except Exception as e:  # pragma: no cover - import-time error surface
             raise ImportError(
                 "openai package is required. Install with: pip install 'vanna[openai]'"
@@ -63,14 +63,13 @@ class OpenAILlmService(LlmService):
         if base_url:
             client_kwargs["base_url"] = base_url
 
-        self._client = OpenAI(**client_kwargs)
+        self._client = AsyncOpenAI(**client_kwargs)
 
     async def send_request(self, request: LlmRequest) -> LlmResponse:
         """Send a non-streaming request to OpenAI and return the response."""
         payload = self._build_payload(request)
 
-        # Call the API synchronously; this function is async but we can block here.
-        resp = self._client.chat.completions.create(**payload, stream=False)
+        resp = await self._client.chat.completions.create(**payload, stream=False)
 
         if not resp.choices:
             return LlmResponse(content=None, tool_calls=None, finish_reason=None)
@@ -107,47 +106,51 @@ class OpenAILlmService(LlmService):
         """
         payload = self._build_payload(request)
 
-        # Synchronous streaming iterator; iterate within async context.
-        stream = self._client.chat.completions.create(**payload, stream=True)
+        stream = await self._client.chat.completions.create(**payload, stream=True)
 
         # Builders for streamed tool-calls (index -> partial)
         tc_builders: Dict[int, Dict[str, Optional[str]]] = {}
         last_finish: Optional[str] = None
 
-        for event in stream:
-            if not getattr(event, "choices", None):
-                continue
+        try:
+            async for event in stream:
+                if not getattr(event, "choices", None):
+                    continue
 
-            choice = event.choices[0]
-            delta = getattr(choice, "delta", None)
-            if delta is None:
-                # Some SDK versions use `event.choices[0].message` on the final packet
+                choice = event.choices[0]
+                delta = getattr(choice, "delta", None)
+                if delta is None:
+                    # Some SDK versions use `event.choices[0].message` on the final packet
+                    last_finish = getattr(choice, "finish_reason", last_finish)
+                    continue
+
+                # Text content
+                content_piece: Optional[str] = getattr(delta, "content", None)
+                if content_piece:
+                    yield LlmStreamChunk(content=content_piece)
+
+                # Tool calls (streamed)
+                streamed_tool_calls = getattr(delta, "tool_calls", None)
+                if streamed_tool_calls:
+                    for tc in streamed_tool_calls:
+                        idx = getattr(tc, "index", 0) or 0
+                        b = tc_builders.setdefault(
+                            idx, {"id": None, "name": None, "arguments": ""}
+                        )
+                        if getattr(tc, "id", None):
+                            b["id"] = tc.id
+                        fn = getattr(tc, "function", None)
+                        if fn is not None:
+                            if getattr(fn, "name", None):
+                                b["name"] = fn.name
+                            if getattr(fn, "arguments", None):
+                                b["arguments"] = (b["arguments"] or "") + fn.arguments
+
                 last_finish = getattr(choice, "finish_reason", last_finish)
-                continue
-
-            # Text content
-            content_piece: Optional[str] = getattr(delta, "content", None)
-            if content_piece:
-                yield LlmStreamChunk(content=content_piece)
-
-            # Tool calls (streamed)
-            streamed_tool_calls = getattr(delta, "tool_calls", None)
-            if streamed_tool_calls:
-                for tc in streamed_tool_calls:
-                    idx = getattr(tc, "index", 0) or 0
-                    b = tc_builders.setdefault(
-                        idx, {"id": None, "name": None, "arguments": ""}
-                    )
-                    if getattr(tc, "id", None):
-                        b["id"] = tc.id
-                    fn = getattr(tc, "function", None)
-                    if fn is not None:
-                        if getattr(fn, "name", None):
-                            b["name"] = fn.name
-                        if getattr(fn, "arguments", None):
-                            b["arguments"] = (b["arguments"] or "") + fn.arguments
-
-            last_finish = getattr(choice, "finish_reason", last_finish)
+        finally:
+            close = getattr(stream, "close", None)
+            if close is not None:
+                await close()
 
         # Emit final tool-calls chunk if any
         final_tool_calls: List[ToolCall] = []

@@ -273,7 +273,7 @@ describe('vanna-chat', () => {
     expect(renderedMessageText(chat)).toContain('The request could not be completed');
   });
 
-  it('reuses the turn request ID and creates a new trace for polling fallback', async () => {
+  it('falls back after heartbeat-only EOF and preserves the turn request ID', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async (input, init) => {
         const request = captureRequest(init);
@@ -281,7 +281,10 @@ describe('vanna-chat', () => {
           return streamResponse('Welcome', request);
         }
         if (String(input).endsWith('/chat_sse')) {
-          throw new Error('stream unavailable');
+          return new Response(': heartbeat\n\n', {
+            status: 200,
+            headers: correlationHeaders(request),
+          });
         }
         const chunk = {
           component: { type: 'text', text: 'Polling answer' },

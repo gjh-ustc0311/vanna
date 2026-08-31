@@ -111,6 +111,8 @@ Both chat endpoints require `X-Request-Id` and `X-User-Id`; `X-Trace-Id` is opti
 and defaults to the request ID. Correlation IDs are returned in response headers.
 `X-User-Id` is a canonical decimal uint64 in the inclusive range
 `0..18446744073709551615`. The JSON body no longer accepts `request_id`.
+The SSE endpoint emits a standard `: heartbeat` comment after 15 seconds of
+outbound inactivity so compliant clients and proxies can keep the stream open.
 
 There is no Flask, Legacy `/api/v0/*`, or WebSocket chat endpoint. See the
 [API overview](docs/api/README.md) and [SSE contract](docs/api/chat_sse.md).

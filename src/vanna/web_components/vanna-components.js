@@ -2914,6 +2914,10 @@ class gs {
       }
       throw new U("The server ended the stream before [DONE].");
     } finally {
+      try {
+        await r.cancel();
+      } catch {
+      }
       r.releaseLock();
     }
   }
@@ -3632,7 +3636,7 @@ F([
 L = F([
   Yr("vanna-chat")
 ], L);
-typeof console < "u" && console.info("Vanna WebComponent 3.0.0 (2026-08-31T07:04:46.381Z)");
+typeof console < "u" && console.info("Vanna WebComponent 3.0.0 (2026-08-31T08:36:41.613Z)");
 export {
   gs as VannaApiClient,
   U as VannaApiError,
