@@ -10,7 +10,17 @@ from .tool import T, Tool, ToolCall, ToolContext, ToolResult, ToolSchema
 from .llm import LlmMessage, LlmRequest, LlmResponse, LlmService, LlmStreamChunk
 from .storage import Conversation, ConversationStore, Message
 from .user import User, UserService
-from .agent import Agent, AgentConfig
+from .agent import (
+    Agent,
+    AgentComponentEvent,
+    AgentConfig,
+    AgentEvent,
+    AgentProgressEvent,
+    ProgressConfig,
+    ProgressStage,
+    ProgressUpdate,
+    ToolProgressSpec,
+)
 from .system_prompt import DefaultSystemPromptBuilder, SystemPromptBuilder
 from .lifecycle import LifecycleHook
 from .middleware import LlmMiddleware
@@ -124,6 +134,13 @@ __all__ = [
     "ToolRegistry",
     "Agent",
     "AgentConfig",
+    "AgentComponentEvent",
+    "AgentEvent",
+    "AgentProgressEvent",
+    "ProgressConfig",
+    "ProgressStage",
+    "ProgressUpdate",
+    "ToolProgressSpec",
     "DefaultSystemPromptBuilder",
     # Evaluation
     "Evaluator",

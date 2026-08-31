@@ -14,6 +14,7 @@ from vanna.components import (
     TextComponent,
 )
 from .config import AgentConfig
+from .events import AgentComponentEvent, AgentEvent, AgentProgressEvent
 from vanna.core.storage import ConversationStore
 from vanna.core.llm import LlmService
 from vanna.core.system_prompt import SystemPromptBuilder
@@ -138,24 +139,35 @@ class Agent:
         message: str,
         *,
         conversation_id: Optional[str] = None,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[Component, None]:
-        """
-        Process a user message and yield supported components with error handling.
+        """Process a user message and yield only persistent components."""
+        async for event in self.send_message_events(
+            request_context,
+            message,
+            conversation_id=conversation_id,
+            request_id=request_id,
+        ):
+            if isinstance(event, AgentComponentEvent):
+                yield event.component
 
-        Args:
-            request_context: Request context for user resolution (includes metadata)
-            message: User's message content
-            conversation_id: Optional conversation ID; if None, creates new conversation
-
-        Yields:
-            Supported components for the client
-        """
+    async def send_message_events(
+        self,
+        request_context: RequestContext,
+        message: str,
+        *,
+        conversation_id: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ) -> AsyncGenerator[AgentEvent, None]:
+        """Process a message and yield components plus transient progress events."""
         try:
-            # Delegate to internal method
-            async for component in self._send_message(
-                request_context, message, conversation_id=conversation_id
+            async for event in self._send_message_events(
+                request_context,
+                message,
+                conversation_id=conversation_id,
+                request_id=request_id,
             ):
-                yield component
+                yield event
         except Exception as e:
             # Log full stack trace
             stack_trace = traceback.format_exc()
@@ -188,36 +200,39 @@ class Agent:
                         exc_info=True,
                     )
 
-            yield TextComponent(
-                text=(
-                    "An unexpected error occurred while processing your message. "
-                    "Please try again."
-                    + (
-                        f"\n\nConversation ID: `{conversation_id}`"
-                        if conversation_id
-                        else ""
+            yield AgentComponentEvent(
+                component=TextComponent(
+                    text=(
+                        "An unexpected error occurred while processing your message. "
+                        "Please try again."
+                        + (
+                            f"\n\nConversation ID: `{conversation_id}`"
+                            if conversation_id
+                            else ""
+                        )
                     )
                 )
             )
 
-    async def _send_message(
+    async def _send_message_events(
         self,
         request_context: RequestContext,
         message: str,
         *,
         conversation_id: Optional[str] = None,
-    ) -> AsyncGenerator[Component, None]:
-        """
-        Internal method to process a user message and yield supported components.
+        request_id: Optional[str] = None,
+    ) -> AsyncGenerator[AgentEvent, None]:
+        """Internal event-producing implementation for one user message."""
+        is_starter_request = (not message.strip()) or request_context.metadata.get(
+            "starter_ui_request", False
+        )
+        if (
+            not is_starter_request
+            and self.config.progress.enabled
+            and self.config.progress.initial is not None
+        ):
+            yield AgentProgressEvent(progress=self.config.progress.initial)
 
-        Args:
-            request_context: Request context for user resolution (includes metadata)
-            message: User's message content
-            conversation_id: Optional conversation ID; if None, creates new conversation
-
-        Yields:
-            Supported components for the client
-        """
         # Resolve user from request context with observability
         user_resolution_span = None
         if self.observability_provider:
@@ -237,11 +252,6 @@ class Agent:
                     user_resolution_span.duration_ms() or 0,
                     "ms",
                 )
-
-        # Check if this is a starter UI request (empty message or explicit metadata flag)
-        is_starter_request = (not message.strip()) or request_context.metadata.get(
-            "starter_ui_request", False
-        )
 
         if is_starter_request and self.workflow_handler:
             # Handle starter UI request with observability
@@ -278,7 +288,7 @@ class Agent:
 
                 if components:
                     for component in components:
-                        yield component
+                        yield AgentComponentEvent(component=component)
 
                 if self.observability_provider and starter_span:
                     await self.observability_provider.end_span(starter_span)
@@ -348,11 +358,11 @@ class Agent:
         # Use the potentially modified message
         message = modified_message
 
-        # Generate conversation ID and request ID if not provided
+        # Generate conversation and request IDs if not provided.
         if conversation_id is None:
             conversation_id = str(uuid.uuid4())
 
-        request_id = str(uuid.uuid4())
+        request_id = request_id or str(uuid.uuid4())
 
         # Load or create conversation with observability (but don't add message yet)
         conversation_span = None
@@ -414,11 +424,11 @@ class Agent:
                     if workflow_result.components:
                         if isinstance(workflow_result.components, list):
                             for component in workflow_result.components:
-                                yield component
+                                yield AgentComponentEvent(component=component)
                         else:
                             # AsyncGenerator
                             async for component in workflow_result.components:
-                                yield component
+                                yield AgentComponentEvent(component=component)
 
                     # Save conversation if auto-save enabled
                     if self.config.auto_save_conversations:
@@ -577,6 +587,10 @@ class Agent:
                 # Collect all tool results first
                 tool_results = []
                 for tool_call in response.tool_calls or []:
+                    progress_spec = self.config.progress.for_tool(tool_call.name)
+                    if self.config.progress.enabled and progress_spec.started:
+                        yield AgentProgressEvent(progress=progress_spec.started)
+
                     # Run before_tool hooks with observability
                     tool = await self.tool_registry.get_tool(tool_call.name)
                     if tool:
@@ -677,7 +691,15 @@ class Agent:
                     # Tool failures remain in the LLM/audit path and are summarized
                     # by the final assistant text.
                     if result.success and result.component is not None:
-                        yield result.component
+                        yield AgentComponentEvent(component=result.component)
+
+                    progress_update = (
+                        progress_spec.succeeded
+                        if result.success
+                        else progress_spec.failed
+                    )
+                    if self.config.progress.enabled and progress_update is not None:
+                        yield AgentProgressEvent(progress=progress_update)
 
                     # Collect tool result data
                     tool_results.append(
@@ -712,7 +734,9 @@ class Agent:
                     conversation.add_message(
                         Message(role="assistant", content=response.content)
                     )
-                    yield TextComponent(text=response.content)
+                    yield AgentComponentEvent(
+                        component=TextComponent(text=response.content)
+                    )
                 break
 
         # Check if we hit the tool iteration limit
@@ -732,7 +756,7 @@ You can:
 - Adjust the `max_tool_iterations` setting if you need more tool calls
 - Break the task into smaller steps"""
 
-            yield TextComponent(text=warning_message)
+            yield AgentComponentEvent(component=TextComponent(text=warning_message))
 
         # Save conversation if configured
         if self.config.auto_save_conversations:

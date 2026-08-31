@@ -20,7 +20,7 @@ initial text prompt.
 
 ## Component envelope
 
-Every successful stream event is self-contained:
+Every persistent result is self-contained:
 
 ```json
 {
@@ -68,16 +68,44 @@ conversion or export.
 Only relative links and absolute HTTP(S) links are valid. Protocol-relative and
 active-content schemes such as `javascript:` are rejected.
 
+## Progress envelope
+
+SSE emits transient business progress by default for non-starter requests:
+
+```json
+{
+  "progress": {
+    "stage": "executing",
+    "message": "正在执行只读查询…"
+  },
+  "conversation_id": "conv_123",
+  "request_id": "req_123",
+  "timestamp": 1788115199.0
+}
+```
+
+`stage` is one of `analyzing`, `preparing`, `executing`, `summarizing` or
+`recovering`. `message` is a server-controlled display string of at most 120
+characters. Progress never contains model reasoning, tool names, SQL, arguments or
+internal errors.
+
+Progress is not a component: it is replaced in one temporary client status, is not
+stored in conversation history and is not returned by polling. There is no progress
+ID, percentage or completed state; `[DONE]` is the completion signal.
+
 ## SSE response
 
 ```text
+data: {"progress":{"stage":"analyzing","message":"正在分析问题…"},"conversation_id":"conv_123","request_id":"req_123","timestamp":1788115199.0}
+
 data: {"component":{"type":"text","text":"完成"},"conversation_id":"conv_123","request_id":"req_123","timestamp":1788115200.0}
 
 data: [DONE]
 
 ```
 
-Each `data:` event contains exactly one envelope. `[DONE]` terminates the stream.
+Each `data:` event contains exactly one progress, component or error envelope.
+`[DONE]` terminates a complete stream; EOF before `[DONE]` is a transport failure.
 
 If execution fails after the response has started, the server emits a safe transport
 error and then `[DONE]`:
@@ -98,7 +126,8 @@ Internal exception details are not sent to clients.
 
 ## Polling response
 
-Polling waits for completion and returns the same envelopes in order:
+Polling waits for completion and returns only persistent component envelopes in
+order:
 
 ```json
 {
@@ -121,9 +150,10 @@ A polling execution failure returns HTTP 500 with the transport error envelope.
 ## Bundled client behavior
 
 `<vanna-chat>` uses SSE first. It uses polling only when SSE fails before a valid
-payload is received; it never replays a partially delivered request. Busy state is
-local to the client and is not represented by server components. Unknown component
-types and malformed envelopes fail closed.
+payload is received; progress counts as a valid payload, so a request that has begun
+is never replayed through polling. The latest progress message replaces one local
+status and is cleared on `[DONE]` or failure. Unknown component types, unknown
+progress stages and malformed envelopes fail closed.
 
 V3 has no `/api/vanna/v2/*` aliases. Consumers must migrate atomically with the
 Python package and WebComponent 3.0.

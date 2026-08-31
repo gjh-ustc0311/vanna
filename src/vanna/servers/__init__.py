@@ -12,6 +12,7 @@ from .base import (
     ChatResponse,
     ChatStreamChunk,
     ChatStreamError,
+    ChatStreamProgress,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "ChatResponse",
     "ChatStreamChunk",
     "ChatStreamError",
+    "ChatStreamProgress",
 ]

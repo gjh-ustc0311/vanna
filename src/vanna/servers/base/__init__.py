@@ -12,6 +12,7 @@ from .models import (
     ChatResponse,
     ChatStreamChunk,
     ChatStreamError,
+    ChatStreamProgress,
 )
 from .templates import INDEX_HTML
 
@@ -20,6 +21,7 @@ __all__ = [
     "ChatRequest",
     "ChatStreamChunk",
     "ChatStreamError",
+    "ChatStreamProgress",
     "ChatError",
     "ChatResponse",
     "INDEX_HTML",

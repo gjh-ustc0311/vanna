@@ -3,10 +3,15 @@ Framework-agnostic chat handling logic.
 """
 
 import uuid
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, Union
 
-from ...core import Agent
-from .models import ChatRequest, ChatResponse, ChatStreamChunk
+from ...core import Agent, AgentComponentEvent, AgentProgressEvent
+from .models import (
+    ChatRequest,
+    ChatResponse,
+    ChatStreamChunk,
+    ChatStreamProgress,
+)
 
 
 class ChatHandler:
@@ -26,24 +31,44 @@ class ChatHandler:
     async def handle_stream(
         self, request: ChatRequest
     ) -> AsyncGenerator[ChatStreamChunk, None]:
-        """Stream chat responses.
+        """Stream only persistent chat components for compatibility and polling."""
+        async for stream_item in self.handle_events(request):
+            if isinstance(stream_item, ChatStreamChunk):
+                yield stream_item
 
-        Args:
-            request: Chat request
-
-        Yields:
-            Chat stream chunks
-        """
+    async def handle_events(
+        self, request: ChatRequest
+    ) -> AsyncGenerator[Union[ChatStreamChunk, ChatStreamProgress], None]:
+        """Stream persistent components and transient progress frames."""
         conversation_id = request.conversation_id or self._generate_conversation_id()
-        # Use request_id from client for tracking, or use the one generated internally
         request_id = request.request_id or str(uuid.uuid4())
 
-        async for component in self.agent.send_message(
+        send_events = getattr(self.agent, "send_message_events", None)
+        if send_events is None:
+            async for component in self.agent.send_message(
+                request_context=request.request_context,
+                message=request.message,
+                conversation_id=conversation_id,
+            ):
+                yield ChatStreamChunk.from_component(
+                    component, conversation_id, request_id
+                )
+            return
+
+        async for event in send_events(
             request_context=request.request_context,
             message=request.message,
             conversation_id=conversation_id,
+            request_id=request_id,
         ):
-            yield ChatStreamChunk.from_component(component, conversation_id, request_id)
+            if isinstance(event, AgentProgressEvent):
+                yield ChatStreamProgress.from_progress(
+                    event.progress, conversation_id, request_id
+                )
+            elif isinstance(event, AgentComponentEvent):
+                yield ChatStreamChunk.from_component(
+                    event.component, conversation_id, request_id
+                )
 
     async def handle_poll(self, request: ChatRequest) -> ChatResponse:
         """Handle polling-based chat.

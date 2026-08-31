@@ -6,12 +6,14 @@ import { vannaDesignTokens } from '../styles/vanna-design-tokens.js';
 import {
   type ChatRequest,
   type ChatStreamChunk,
+  type ChatStreamProgress,
   type DataFrameComponent,
   type JsonScalar,
   type VannaComponent,
   VannaApiClient,
   VannaApiError,
   isChatStreamError,
+  isChatStreamProgress,
   isSafeLink,
 } from '../services/api-client.js';
 
@@ -206,6 +208,8 @@ export class VannaChat extends LitElement {
   @state() private currentMessage = '';
   @state() private busy = false;
   @state() private items: ChatItem[] = [];
+  @state() private currentProgress: ChatStreamProgress | null = null;
+  @state() private showBusyStatus = false;
 
   private conversationId = this.generateId();
   private customHeaders: Record<string, string> = {};
@@ -226,7 +230,11 @@ export class VannaChat extends LitElement {
           ${this.items.length === 0 && !this.busy
             ? html`<div class="empty">Ask a question to begin.</div>`
             : this.items.map((item) => this.renderItem(item))}
-          ${this.busy ? html`<p class="busy" role="status">Thinking…</p>` : nothing}
+          ${this.busy && this.showBusyStatus
+            ? html`<p class="busy" role="status" aria-live="polite" aria-atomic="true">
+              ${this.currentProgress?.progress.message ?? 'Thinking…'}
+            </p>`
+            : nothing}
         </main>
         <form @submit=${this.handleSubmit}>
           <textarea
@@ -280,6 +288,7 @@ export class VannaChat extends LitElement {
 
   clearMessages(): void {
     this.items = [];
+    this.currentProgress = null;
     this.conversationId = this.generateId();
   }
 
@@ -305,6 +314,8 @@ export class VannaChat extends LitElement {
 
   private async performRequest(request: ChatRequest, silent = false): Promise<void> {
     this.busy = true;
+    this.currentProgress = null;
+    this.showBusyStatus = !silent;
     const client = this.createClient();
     const payload = { ...request, request_id: client.generateId() };
     let receivedPayload = false;
@@ -315,6 +326,10 @@ export class VannaChat extends LitElement {
           if (isChatStreamError(chunk)) {
             throw new VannaApiError(chunk.error.message, chunk.error.code);
           }
+          if (isChatStreamProgress(chunk)) {
+            this.applyProgress(chunk);
+            continue;
+          }
           this.appendChunk(chunk);
         }
       } catch (error) {
@@ -324,6 +339,8 @@ export class VannaChat extends LitElement {
     } catch (error) {
       if (!silent) this.appendError(error);
     } finally {
+      this.currentProgress = null;
+      this.showBusyStatus = false;
       this.busy = false;
       await this.scrollToEnd();
     }
@@ -344,6 +361,18 @@ export class VannaChat extends LitElement {
     }];
     this.dispatchEvent(new CustomEvent('chunk-received', {
       detail: chunk,
+      bubbles: true,
+      composed: true,
+    }));
+    void this.scrollToEnd();
+  }
+
+  private applyProgress(progress: ChatStreamProgress): void {
+    this.conversationId = progress.conversation_id || this.conversationId;
+    this.currentProgress = progress;
+    this.showBusyStatus = true;
+    this.dispatchEvent(new CustomEvent('progress-received', {
+      detail: progress,
       bubbles: true,
       composed: true,
     }));

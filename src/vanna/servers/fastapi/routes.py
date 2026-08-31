@@ -10,9 +10,20 @@ from typing import Any, AsyncGenerator, Dict, Optional
 from urllib.parse import parse_qs, unquote
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 
-from ..base import ChatError, ChatHandler, ChatRequest, ChatStreamError
+from ..base import (
+    ChatError,
+    ChatHandler,
+    ChatRequest,
+    ChatStreamError,
+    ChatStreamProgress,
+)
 from ..base.templates import get_index_html
 from ...core.user.request_context import RequestContext
 from .xpd_logging import log_xpd_chat_sse_event
@@ -99,9 +110,7 @@ def register_chat_routes(
             RequestContext(
                 cookies=dict(http_request.cookies),
                 headers=dict(http_request.headers),
-                remote_addr=(
-                    http_request.client.host if http_request.client else None
-                ),
+                remote_addr=(http_request.client.host if http_request.client else None),
                 query_params=dict(http_request.query_params),
                 metadata=chat_request.metadata,
             )
@@ -122,19 +131,26 @@ def register_chat_routes(
         async def generate() -> AsyncGenerator[str, None]:
             """Generate SSE stream."""
             try:
-                async for chunk in chat_handler.handle_stream(chat_request):
-                    chunk_json = chunk.model_dump_json()
+                handle_events = getattr(chat_handler, "handle_events", None)
+                if handle_events is None:
+                    handle_events = chat_handler.handle_stream
+                async for stream_item in handle_events(chat_request):
+                    item_json = stream_item.model_dump_json()
                     if chat_sse_logger is not None:
                         log_xpd_chat_sse_event(
                             chat_sse_logger,
                             event="xpd.chat.response",
                             path=path,
-                            conversation_id=chunk.conversation_id,
-                            request_id=chunk.request_id,
-                            message_type="chunk",
-                            payload=json.loads(chunk_json),
+                            conversation_id=stream_item.conversation_id,
+                            request_id=stream_item.request_id,
+                            message_type=(
+                                "progress"
+                                if isinstance(stream_item, ChatStreamProgress)
+                                else "chunk"
+                            ),
+                            payload=json.loads(item_json),
                         )
-                    yield f"data: {chunk_json}\n\n"
+                    yield f"data: {item_json}\n\n"
                 if chat_sse_logger is not None:
                     log_xpd_chat_sse_event(
                         chat_sse_logger,
@@ -181,9 +197,7 @@ def register_chat_routes(
         )
 
     @app.post("/api/vanna/v3/chat_poll")
-    async def chat_poll(
-        chat_request: ChatRequest, http_request: Request
-    ):
+    async def chat_poll(chat_request: ChatRequest, http_request: Request):
         """Polling endpoint for chat."""
         chat_request.conversation_id = (
             chat_request.conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
@@ -194,9 +208,7 @@ def register_chat_routes(
             RequestContext(
                 cookies=dict(http_request.cookies),
                 headers=dict(http_request.headers),
-                remote_addr=(
-                    http_request.client.host if http_request.client else None
-                ),
+                remote_addr=(http_request.client.host if http_request.client else None),
                 query_params=dict(http_request.query_params),
                 metadata=chat_request.metadata,
             )

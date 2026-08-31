@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from ...components import Component
+from ...core.agent import ProgressUpdate
 from ...core.user.request_context import RequestContext
 
 
@@ -58,6 +59,30 @@ class ChatStreamChunk(BaseModel):
 
         return cls(
             component=component,
+            conversation_id=conversation_id,
+            request_id=request_id,
+        )
+
+
+class ChatStreamProgress(BaseModel):
+    """Transient progress frame for an SSE chat response."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    progress: ProgressUpdate
+    conversation_id: str = Field(description="Conversation ID")
+    request_id: str = Field(description="Request ID")
+    timestamp: float = Field(default_factory=time.time, description="Timestamp")
+
+    @classmethod
+    def from_progress(
+        cls,
+        progress: ProgressUpdate,
+        conversation_id: str,
+        request_id: str,
+    ) -> "ChatStreamProgress":
+        return cls(
+            progress=progress,
             conversation_id=conversation_id,
             request_id=request_id,
         )

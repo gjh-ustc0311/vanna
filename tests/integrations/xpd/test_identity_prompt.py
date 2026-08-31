@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 import pytest
 
 from vanna.components import TextComponent
+from vanna.core.agent import AgentComponentEvent, AgentProgressEvent
 from vanna.core.llm import LlmMessage, LlmRequest, LlmResponse, LlmStreamChunk
 from vanna.core.user import User
 from vanna.core.user.request_context import RequestContext
@@ -136,3 +137,40 @@ def test_xpd_identity_prompt_is_first_system_message_in_model_payload():
     assert "通用回答后不要固定追加 XPD 宣传或引导语" in XPD_SYSTEM_PROMPT
     assert "通用问题都不调用 search_xpd_schema 或 run_xpd_sql" in XPD_SYSTEM_PROMPT
     assert "不要将自己介绍为可提供通用写作" not in XPD_SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_xpd_agent_uses_safe_chinese_progress_messages(xpd_agent):
+    agent, _ = xpd_agent
+
+    events = [
+        event
+        async for event in agent.send_message_events(
+            RequestContext(),
+            "你好呀",
+            conversation_id="progress-messages",
+            request_id="progress-request",
+        )
+    ]
+
+    assert isinstance(events[0], AgentProgressEvent)
+    assert events[0].progress.model_dump() == {
+        "stage": "analyzing",
+        "message": "正在分析问题…",
+    }
+    assert isinstance(events[-1], AgentComponentEvent)
+
+    schema_progress = agent.config.progress.for_tool("search_xpd_schema")
+    sql_progress = agent.config.progress.for_tool("run_xpd_sql")
+    assert schema_progress.started.message == "正在读取数据结构…"
+    assert schema_progress.succeeded.message == "正在生成查询方案…"
+    assert sql_progress.started.message == "正在执行只读查询…"
+    assert sql_progress.succeeded.message == "正在整理查询结果…"
+    serialized = " ".join(
+        update.message
+        for spec in (schema_progress, sql_progress)
+        for update in (spec.started, spec.succeeded, spec.failed)
+        if update is not None
+    )
+    assert "search_xpd_schema" not in serialized
+    assert "run_xpd_sql" not in serialized

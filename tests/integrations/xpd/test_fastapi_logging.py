@@ -7,7 +7,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from vanna.components import TextComponent
-from vanna.servers.base import ChatResponse, ChatStreamChunk
+from vanna.core.agent import ProgressUpdate
+from vanna.servers.base import ChatResponse, ChatStreamChunk, ChatStreamProgress
 from vanna.servers.fastapi import VannaFastAPIServer
 from vanna.servers.fastapi.routes import register_chat_routes
 from vanna.servers.fastapi.xpd_logging import (
@@ -53,6 +54,28 @@ class FailingChatHandler:
 
     async def handle_poll(self, request):
         raise RuntimeError("poll failed")
+
+
+class ProgressChatHandler(StubChatHandler):
+    async def handle_events(self, request):
+        yield ChatStreamProgress(
+            progress=ProgressUpdate(stage="analyzing", message="正在分析问题…"),
+            conversation_id=request.conversation_id or "conv_fallback",
+            request_id=request.request_id or "req_fallback",
+            timestamp=1,
+        )
+        yield self._chunk(request, "answer")
+
+
+class ProgressThenFailChatHandler(FailingChatHandler):
+    async def handle_events(self, request):
+        yield ChatStreamProgress(
+            progress=ProgressUpdate(stage="analyzing", message="正在分析问题…"),
+            conversation_id=request.conversation_id or "conv_fallback",
+            request_id=request.request_id or "req_fallback",
+            timestamp=1,
+        )
+        raise RuntimeError("private failure")
 
 
 class StubAgent:
@@ -158,6 +181,79 @@ def test_xpd_sse_logs_safe_error_frame_and_terminates_stream():
     assert [item["message_type"] for item in logs] == ["request", "error"]
     assert logs[1]["payload"] == error_payload
     assert response.text.endswith("data: [DONE]\n\n")
+
+
+def test_xpd_sse_logs_progress_as_a_distinct_wire_message():
+    logger, handler = _capturing_logger()
+    app = FastAPI()
+    register_chat_routes(
+        app,
+        ProgressChatHandler(),  # type: ignore[arg-type]
+        chat_sse_logger=logger,
+    )
+
+    response = TestClient(app).post(
+        "/api/vanna/v3/chat_sse",
+        json={
+            "message": "question",
+            "conversation_id": "conv_1",
+            "request_id": "req_1",
+        },
+    )
+
+    frames = [
+        line.removeprefix("data: ")
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    logs = _events(handler)
+    assert [item["message_type"] for item in logs] == [
+        "request",
+        "progress",
+        "chunk",
+        "done",
+    ]
+    assert json.loads(frames[0])["progress"] == {
+        "stage": "analyzing",
+        "message": "正在分析问题…",
+    }
+    assert json.loads(frames[1])["component"]["text"] == "answer"
+    assert frames[-1] == "[DONE]"
+
+
+def test_xpd_sse_progress_then_failure_uses_safe_error_and_done():
+    logger, handler = _capturing_logger()
+    app = FastAPI()
+    register_chat_routes(
+        app,
+        ProgressThenFailChatHandler(),  # type: ignore[arg-type]
+        chat_sse_logger=logger,
+    )
+
+    response = TestClient(app).post(
+        "/api/vanna/v3/chat_sse",
+        json={
+            "message": "question",
+            "conversation_id": "conv_1",
+            "request_id": "req_1",
+        },
+    )
+
+    frames = [
+        line.removeprefix("data: ")
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    logs = _events(handler)
+    assert [item["message_type"] for item in logs] == [
+        "request",
+        "progress",
+        "error",
+    ]
+    assert "progress" in json.loads(frames[0])
+    assert json.loads(frames[1])["error"]["code"] == "internal_error"
+    assert "private failure" not in response.text
+    assert frames[-1] == "[DONE]"
 
 
 def test_poll_failure_uses_safe_typed_error_envelope():

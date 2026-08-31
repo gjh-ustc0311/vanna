@@ -1,14 +1,15 @@
 # Vanna FastAPI HTTP API
 
-Vanna 3.0 exposes one append-only component protocol over SSE and polling. The V2
-Rich/Simple protocol is removed and has no compatibility route.
+Vanna 3.0 exposes append-only result components over SSE and polling, plus transient
+business progress over SSE. The V2 Rich/Simple protocol is removed and has no
+compatibility route.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/` | Built-in `<vanna-chat>` page and local demo login. |
 | `POST` | `/login` | Set the validated local demo identity cookie. |
 | `POST` | `/logout` | Clear the local demo identity cookie. |
-| `POST` | `/api/vanna/v3/chat_sse` | Stream one component envelope per SSE event. |
+| `POST` | `/api/vanna/v3/chat_sse` | Stream progress and component envelopes. |
 | `POST` | `/api/vanna/v3/chat_poll` | Return all component envelopes after completion. |
 | `GET` | `/health` | Health check. |
 
@@ -32,6 +33,9 @@ Only three component payloads are supported:
 - `{"type":"text","text":"Markdown or plain text"}`
 - `{"type":"dataframe","columns":[...],"rows":[...],"title":null,"truncated":false}`
 - `{"type":"link","url":"/relative-or-http-url","text":"Optional label"}`
+
+Progress is a separate top-level envelope and never expands the component union or
+appears in polling results.
 
 See [SSE and polling contract](./chat_sse.md) for complete envelopes, errors and
 client behavior.

@@ -28,7 +28,8 @@
 - 使用 `marked` 解析 Markdown、`DOMPurify` 二次清理，并在解析前转义原始
   HTML。
 - 静态渲染 100 行以内的数据表；安全渲染相对/HTTP(S) 链接。
-- 删除 Plotly、Rich renderer、任务、进度、状态与相关 Storybook/demo 代码。
+- 删除 Plotly、Rich renderer、任务、旧进度/状态组件与相关 Storybook/demo 代码；
+  临时过程反馈由独立 SSE `progress` 信封和单状态 renderer 承担。
 - 构建时把同版本 WebComponent 同步进 Python 包，FastAPI 默认本地托管；CDN
   仅作为显式覆盖，防止前后端协议版本错配。
 - 保留基础 `<vanna-chat>` 属性和 `sendMessage`、`addMessage`、

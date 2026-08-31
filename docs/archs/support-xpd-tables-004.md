@@ -15,6 +15,13 @@ Agent / Workflow / Tool
           │
           ├── SSE event
           └── Polling chunks[]
+
+ AgentProgressEvent(stage, message)
+          │
+          ▼
+ ChatStreamProgress(progress, conversation_id, request_id, timestamp)
+          │
+          └── SSE temporary status only
 ```
 
 旧 `UiComponent` 的字段是 `timestamp`、`rich_component` 和可选
@@ -36,9 +43,11 @@ Agent / Workflow / Tool
 
 ## 状态与错误
 
-组件只描述可持久展示的业务结果。加载、禁用输入等短暂状态属于客户端本地状态，
-不会写入历史或跨网络传播。Agent 可恢复的业务失败转成安全文本；HTTP/流损坏等
-传输失败使用 `{error:{code,message}, ...}`，与组件信封互斥。
+组件只描述可持久展示的业务结果。服务端可通过独立 `progress` 信封发送
+`analyzing/preparing/executing/summarizing/recovering` 业务阶段；前端只覆盖一条
+临时状态，不写入历史或 Polling，也不包含模型思维、工具名、SQL、参数或内部错误。
+输入禁用仍由客户端 busy 状态控制。Agent 可恢复的业务失败转成安全文本；
+HTTP/流损坏等传输失败使用 `{error:{code,message}, ...}`，与其他信封互斥。
 
 ## 数据边界
 

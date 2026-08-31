@@ -1,12 +1,10 @@
-"""
-Agent configuration.
+"""Agent configuration models."""
 
-This module contains configuration models that control agent behavior.
-"""
-
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from .events import ProgressUpdate
 
 
 class AuditConfig(BaseModel):
@@ -36,6 +34,42 @@ class AuditConfig(BaseModel):
     )
 
 
+class ToolProgressSpec(BaseModel):
+    """Safe progress messages for one tool without exposing its invocation data."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    started: Optional[ProgressUpdate] = None
+    succeeded: Optional[ProgressUpdate] = None
+    failed: Optional[ProgressUpdate] = None
+
+
+def _default_initial_progress() -> ProgressUpdate:
+    return ProgressUpdate(stage="analyzing", message="Analyzing your question…")
+
+
+def _default_tool_progress() -> ToolProgressSpec:
+    return ToolProgressSpec(
+        started=ProgressUpdate(stage="executing", message="Working on your request…"),
+        succeeded=ProgressUpdate(stage="summarizing", message="Preparing the result…"),
+        failed=ProgressUpdate(stage="recovering", message="Adjusting the approach…"),
+    )
+
+
+class ProgressConfig(BaseModel):
+    """Configure transient, user-facing Agent progress events."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    initial: Optional[ProgressUpdate] = Field(default_factory=_default_initial_progress)
+    default_tool: ToolProgressSpec = Field(default_factory=_default_tool_progress)
+    tools: Dict[str, ToolProgressSpec] = Field(default_factory=dict)
+
+    def for_tool(self, tool_name: str) -> ToolProgressSpec:
+        return self.tools.get(tool_name, self.default_tool)
+
+
 class AgentConfig(BaseModel):
     """Configuration for agent behavior."""
 
@@ -47,3 +81,4 @@ class AgentConfig(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(default=None, gt=0)
     audit_config: AuditConfig = Field(default_factory=AuditConfig)
+    progress: ProgressConfig = Field(default_factory=ProgressConfig)

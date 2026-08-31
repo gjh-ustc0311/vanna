@@ -5,6 +5,7 @@ export {
   VannaApiError,
   apiClient,
   isChatStreamError,
+  isChatStreamProgress,
   isSafeLink,
 } from './services/api-client.js';
 export type {
@@ -14,9 +15,12 @@ export type {
   ChatStreamChunk,
   ChatStreamError,
   ChatStreamPayload,
+  ChatStreamProgress,
   DataFrameComponent,
   JsonScalar,
   LinkComponent,
+  ProgressStage,
+  ProgressUpdate,
   TextComponent,
   VannaComponent,
 } from './services/api-client.js';

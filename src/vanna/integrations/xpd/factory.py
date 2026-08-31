@@ -6,7 +6,15 @@ from typing import Optional
 from urllib.parse import unquote
 
 from vanna.capabilities.agent_memory import AgentMemory
-from vanna.core import Agent, AgentConfig, DefaultSystemPromptBuilder, ToolRegistry
+from vanna.core import (
+    Agent,
+    AgentConfig,
+    DefaultSystemPromptBuilder,
+    ProgressConfig,
+    ProgressUpdate,
+    ToolProgressSpec,
+    ToolRegistry,
+)
 from vanna.core.user import User
 from vanna.core.user.request_context import RequestContext
 from vanna.core.user.resolver import UserResolver
@@ -120,6 +128,42 @@ def create_xpd_agent(
             stream_responses=True,
             auto_save_conversations=True,
             temperature=0,
+            progress=ProgressConfig(
+                initial=ProgressUpdate(stage="analyzing", message="正在分析问题…"),
+                default_tool=ToolProgressSpec(
+                    started=ProgressUpdate(stage="executing", message="正在处理请求…"),
+                    succeeded=ProgressUpdate(
+                        stage="summarizing", message="正在整理结果…"
+                    ),
+                    failed=ProgressUpdate(
+                        stage="recovering", message="正在调整处理方案…"
+                    ),
+                ),
+                tools={
+                    "search_xpd_schema": ToolProgressSpec(
+                        started=ProgressUpdate(
+                            stage="preparing", message="正在读取数据结构…"
+                        ),
+                        succeeded=ProgressUpdate(
+                            stage="preparing", message="正在生成查询方案…"
+                        ),
+                        failed=ProgressUpdate(
+                            stage="recovering", message="正在调整查询方案…"
+                        ),
+                    ),
+                    "run_xpd_sql": ToolProgressSpec(
+                        started=ProgressUpdate(
+                            stage="executing", message="正在执行只读查询…"
+                        ),
+                        succeeded=ProgressUpdate(
+                            stage="summarizing", message="正在整理查询结果…"
+                        ),
+                        failed=ProgressUpdate(
+                            stage="recovering", message="正在调整查询方案…"
+                        ),
+                    ),
+                },
+            ),
         ),
         system_prompt_builder=DefaultSystemPromptBuilder(base_prompt=XPD_SYSTEM_PROMPT),
     )

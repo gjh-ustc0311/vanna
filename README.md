@@ -98,7 +98,7 @@ The FastAPI server exposes:
 | `GET /` | Local login state and WebComponent page |
 | `POST /login` | Select a local demo identity |
 | `POST /logout` | Clear the local identity cookie |
-| `POST /api/vanna/v3/chat_sse` | Stream append-only response chunks |
+| `POST /api/vanna/v3/chat_sse` | Stream transient progress and append-only results |
 | `POST /api/vanna/v3/chat_poll` | Polling fallback using the same component contract |
 | `GET /health` | Health check |
 

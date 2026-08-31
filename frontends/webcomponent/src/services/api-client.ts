@@ -37,6 +37,25 @@ export interface ChatStreamChunk {
   timestamp: number;
 }
 
+export type ProgressStage =
+  | 'analyzing'
+  | 'preparing'
+  | 'executing'
+  | 'summarizing'
+  | 'recovering';
+
+export interface ProgressUpdate {
+  stage: ProgressStage;
+  message: string;
+}
+
+export interface ChatStreamProgress {
+  progress: ProgressUpdate;
+  conversation_id: string;
+  request_id: string;
+  timestamp: number;
+}
+
 export interface ChatStreamError {
   error: {
     code: string;
@@ -47,7 +66,7 @@ export interface ChatStreamError {
   timestamp: number;
 }
 
-export type ChatStreamPayload = ChatStreamChunk | ChatStreamError;
+export type ChatStreamPayload = ChatStreamChunk | ChatStreamProgress | ChatStreamError;
 
 export interface ChatResponse {
   chunks: ChatStreamChunk[];
@@ -82,6 +101,13 @@ export function isChatStreamError(payload: unknown): payload is ChatStreamError 
     && hasOnlyKeys(payload.error, ['code', 'message'])
     && typeof payload.error.code === 'string'
     && typeof payload.error.message === 'string';
+}
+
+export function isChatStreamProgress(payload: unknown): payload is ChatStreamProgress {
+  return isRecord(payload)
+    && hasOnlyKeys(payload, ['progress', 'conversation_id', 'request_id', 'timestamp'])
+    && hasEnvelopeFields(payload)
+    && isProgressUpdate(payload.progress);
 }
 
 export function isSafeLink(url: string): boolean {
@@ -151,8 +177,10 @@ export class VannaApiClient {
 
       if (buffer.trim()) {
         const payload = this.parseSseEvent(buffer);
+        if (payload === null) return;
         if (payload) yield payload;
       }
+      throw new VannaApiError('The server ended the stream before [DONE].');
     } finally {
       reader.releaseLock();
     }
@@ -277,6 +305,23 @@ function hasEnvelopeFields(value: Record<string, unknown>): boolean {
     && Number.isFinite(value.timestamp);
 }
 
+function isProgressUpdate(value: unknown): value is ProgressUpdate {
+  if (!isRecord(value)
+    || !hasOnlyKeys(value, ['stage', 'message'])
+    || typeof value.stage !== 'string'
+    || typeof value.message !== 'string'
+    || value.message.length < 1
+    || value.message.length > 120
+  ) return false;
+  return [
+    'analyzing',
+    'preparing',
+    'executing',
+    'summarizing',
+    'recovering',
+  ].includes(value.stage);
+}
+
 function isChatStreamPayload(value: unknown): value is ChatStreamPayload {
   if (!isRecord(value) || !hasEnvelopeFields(value)) return false;
   if ('component' in value) {
@@ -285,6 +330,7 @@ function isChatStreamPayload(value: unknown): value is ChatStreamPayload {
       ['component', 'conversation_id', 'request_id', 'timestamp'],
     ) && isComponent(value.component);
   }
+  if ('progress' in value) return isChatStreamProgress(value);
   return hasOnlyKeys(value, ['error', 'conversation_id', 'request_id', 'timestamp'])
     && isRecord(value.error)
     && hasOnlyKeys(value.error, ['code', 'message'])
