@@ -3,6 +3,7 @@
 > 本文记录 001 期架构；服务传输层已由
 > [002 精简方案](./support-xpd-tables-002.md) 收敛为 FastAPI + SSE/Polling。
 > 当前包支持面和 CLI 契约以 [003 支持面精简](./support-xpd-tables-003.md) 为准。
+> 大结果集、XLSX 与文件交付架构以 [005 架构](./support-xpd-tables-005.md) 为准。
 
 ## 1. 架构边界
 

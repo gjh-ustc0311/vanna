@@ -47,7 +47,7 @@ async def _consume(agent, message, conversation_id):
     return [
         component
         async for component in agent.send_message(
-            RequestContext(), message, conversation_id=conversation_id
+            RequestContext(user_id="123"), message, conversation_id=conversation_id
         )
     ]
 

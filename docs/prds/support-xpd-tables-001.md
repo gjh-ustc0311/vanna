@@ -3,6 +3,8 @@
 > 本文记录 001 期需求；服务传输层已由
 > [002 精简方案](./support-xpd-tables-002.md) 收敛为 FastAPI + SSE/Polling。
 > 当前包支持面和 CLI 契约以 [003 支持面精简](./support-xpd-tables-003.md) 为准。
+> 大结果集、XLSX 与文件交付边界已由 [005 PRD](./support-xpd-tables-005.md) 取代。
+> Cookie 身份与 Body request ID 已由 [006 PRD](./support-xpd-tables-006.md) 取代。
 > 后续变更已为 XPD 增加 `datas/history_storage` 本地会话存储；本文件中“持久化历史/任何文件落盘”仍保留为 001 期原始范围描述，不代表当前运行时行为。
 
 ## 1. 背景

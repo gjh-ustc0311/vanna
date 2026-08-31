@@ -1,12 +1,13 @@
 import io
 import json
 import logging
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from vanna.components import TextComponent
+from vanna.components import FileComponent, TextComponent
 from vanna.core.agent import ProgressUpdate
 from vanna.servers.base import ChatResponse, ChatStreamChunk, ChatStreamProgress
 from vanna.servers.fastapi import VannaFastAPIServer
@@ -18,6 +19,19 @@ from vanna.servers.fastapi.xpd_logging import (
     configure_xpd_chat_sse_logger,
     log_xpd_chat_sse_event,
 )
+
+
+CHAT_HEADERS = {
+    "X-Request-Id": "req_1",
+    "X-Trace-Id": "trace_1",
+    "X-User-Id": "123",
+}
+
+
+def _client(app):
+    client = TestClient(app)
+    client.headers.update(CHAT_HEADERS)
+    return client
 
 
 class CapturingHandler(logging.Handler):
@@ -83,6 +97,30 @@ class StubAgent:
         yield TextComponent(text="answer")
 
 
+class FileChatHandler(StubChatHandler):
+    @staticmethod
+    def _file_chunk(request):
+        return ChatStreamChunk(
+            component=FileComponent(
+                name="result.xlsx",
+                url="https://oss.example.test/result.xlsx?signature=secret",
+                media_type="application/octet-stream",
+                size_bytes=12,
+                row_count=31,
+                truncated=False,
+                expires_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            ),
+            conversation_id=request.conversation_id or "conv_fallback",
+            request_id=request.request_id or "req_fallback",
+        )
+
+    async def handle_stream(self, request):
+        yield self._file_chunk(request)
+
+    async def handle_poll(self, request):
+        return ChatResponse.from_chunks([self._file_chunk(request)])
+
+
 def _capturing_logger():
     logger = logging.getLogger(f"test.xpd.chat_sse.{id(object())}")
     logger.handlers.clear()
@@ -112,7 +150,7 @@ def test_xpd_sse_logs_request_every_wire_message_and_no_http_credentials():
         StubChatHandler(),  # type: ignore[arg-type]
         chat_sse_logger=logger,
     )
-    client = TestClient(app)
+    client = _client(app)
     client.cookies.set("session", "secret-cookie")
 
     response = client.post(
@@ -141,10 +179,11 @@ def test_xpd_sse_logs_request_every_wire_message_and_no_http_credentials():
     assert logs[0]["path"] == "/api/vanna/v3/chat_sse"
     assert logs[0]["payload"]["message"] == "中文问题"
     assert logs[0]["payload"]["metadata"] == {"来源": "测试"}
-    assert logs[0]["payload"]["conversation_id"] == logs[0]["conversation_id"]
-    assert logs[0]["payload"]["request_id"] == logs[0]["request_id"]
+    assert "conversation_id" not in logs[0]["payload"]
+    assert "request_id" not in logs[0]["payload"]
     assert logs[0]["conversation_id"] == wire_chunks[0]["conversation_id"]
     assert logs[0]["request_id"] == wire_chunks[0]["request_id"]
+    assert logs[0]["trace_id"] == "trace_1"
     assert logs[1]["payload"] == wire_chunks[0]
     assert logs[2]["payload"] == wire_chunks[1]
     assert logs[3]["payload"] == "[DONE]"
@@ -157,6 +196,41 @@ def test_xpd_sse_logs_request_every_wire_message_and_no_http_credentials():
     assert all("\n" not in message for message in handler.messages)
 
 
+def test_xpd_sse_redacts_file_url_in_logs_without_changing_wire_payload():
+    logger, handler = _capturing_logger()
+    app = FastAPI()
+    register_chat_routes(
+        app,
+        FileChatHandler(),  # type: ignore[arg-type]
+        chat_sse_logger=logger,
+    )
+
+    response = _client(app).post("/api/vanna/v3/chat_sse", json={"message": "export"})
+
+    wire = json.loads(response.text.splitlines()[0].removeprefix("data: "))
+    logs = _events(handler)
+    assert "signature=secret" in wire["component"]["url"]
+    assert logs[1]["payload"]["component"]["url"] == "<redacted>"
+    assert "signature=secret" not in "\n".join(handler.messages)
+
+
+def test_xpd_poll_redacts_nested_file_url_without_changing_wire_payload():
+    logger, handler = _capturing_logger()
+    app = FastAPI()
+    register_chat_routes(
+        app,
+        FileChatHandler(),  # type: ignore[arg-type]
+        chat_sse_logger=logger,
+    )
+
+    response = _client(app).post("/api/vanna/v3/chat_poll", json={"message": "export"})
+
+    assert "signature=secret" in response.json()["chunks"][0]["component"]["url"]
+    logs = _events(handler)
+    assert logs[1]["payload"]["chunks"][0]["component"]["url"] == "<redacted>"
+    assert "signature=secret" not in "\n".join(handler.messages)
+
+
 def test_xpd_sse_logs_safe_error_frame_and_terminates_stream():
     logger, handler = _capturing_logger()
     app = FastAPI()
@@ -165,14 +239,13 @@ def test_xpd_sse_logs_safe_error_frame_and_terminates_stream():
         FailingChatHandler(),  # type: ignore[arg-type]
         chat_sse_logger=logger,
     )
-    client = TestClient(app)
+    client = _client(app)
 
     response = client.post(
         "/api/vanna/v3/chat_sse",
         json={
             "message": "question",
             "conversation_id": "conv_1",
-            "request_id": "req_1",
         },
     )
 
@@ -192,12 +265,11 @@ def test_xpd_sse_logs_progress_as_a_distinct_wire_message():
         chat_sse_logger=logger,
     )
 
-    response = TestClient(app).post(
+    response = _client(app).post(
         "/api/vanna/v3/chat_sse",
         json={
             "message": "question",
             "conversation_id": "conv_1",
-            "request_id": "req_1",
         },
     )
 
@@ -230,12 +302,11 @@ def test_xpd_sse_progress_then_failure_uses_safe_error_and_done():
         chat_sse_logger=logger,
     )
 
-    response = TestClient(app).post(
+    response = _client(app).post(
         "/api/vanna/v3/chat_sse",
         json={
             "message": "question",
             "conversation_id": "conv_1",
-            "request_id": "req_1",
         },
     )
 
@@ -260,7 +331,7 @@ def test_poll_failure_uses_safe_typed_error_envelope():
     app = FastAPI()
     register_chat_routes(app, FailingChatHandler())  # type: ignore[arg-type]
 
-    response = TestClient(app).post(
+    response = _client(app).post(
         "/api/vanna/v3/chat_poll",
         json={"message": "question", "conversation_id": "conv_1"},
     )
@@ -274,7 +345,34 @@ def test_poll_failure_uses_safe_typed_error_envelope():
     assert "poll failed" not in response.text
 
 
-def test_xpd_logger_is_not_used_by_poll_or_unconfigured_sse():
+def test_preflight_error_logs_safe_poll_correlation_without_execution():
+    logger, handler = _capturing_logger()
+    app = FastAPI()
+    register_chat_routes(
+        app,
+        StubChatHandler(),  # type: ignore[arg-type]
+        chat_sse_logger=logger,
+    )
+
+    response = _client(app).post(
+        "/api/vanna/v3/chat_poll",
+        json={"message": "legacy", "request_id": "body-request"},
+    )
+
+    assert response.status_code == 422
+    events = _events(handler)
+    assert len(events) == 1
+    assert events[0]["event"] == "xpd.chat.response"
+    assert events[0]["transport"] == "poll"
+    assert events[0]["path"] == "/api/vanna/v3/chat_poll"
+    assert events[0]["conversation_id"] == ""
+    assert events[0]["request_id"] == "req_1"
+    assert events[0]["trace_id"] == "trace_1"
+    assert events[0]["message_type"] == "error"
+    assert events[0]["payload"] == response.json()
+
+
+def test_xpd_logger_covers_poll_but_not_unconfigured_sse():
     logger, handler = _capturing_logger()
     logged_app = FastAPI()
     register_chat_routes(
@@ -282,21 +380,25 @@ def test_xpd_logger_is_not_used_by_poll_or_unconfigured_sse():
         StubChatHandler(),  # type: ignore[arg-type]
         chat_sse_logger=logger,
     )
-    logged_client = TestClient(logged_app)
+    logged_client = _client(logged_app)
 
     poll = logged_client.post("/api/vanna/v3/chat_poll", json={"message": "poll"})
     index = logged_client.get("/")
 
     plain_app = FastAPI()
     register_chat_routes(plain_app, StubChatHandler())  # type: ignore[arg-type]
-    plain_sse = TestClient(plain_app).post(
+    plain_sse = _client(plain_app).post(
         "/api/vanna/v3/chat_sse", json={"message": "plain"}
     )
 
     assert poll.status_code == 200
     assert index.status_code == 200
     assert plain_sse.status_code == 200
-    assert handler.messages == []
+    assert [event["message_type"] for event in _events(handler)] == [
+        "request",
+        "response",
+    ]
+    assert all(event["transport"] == "poll" for event in _events(handler))
 
 
 def test_logger_writes_utf8_to_console_and_rotating_file_idempotently(tmp_path):
@@ -363,7 +465,7 @@ def test_server_creates_logs_only_when_xpd_logging_is_enabled(tmp_path, monkeypa
     plain_dir = tmp_path / "plain"
     plain_dir.mkdir()
     monkeypatch.chdir(plain_dir)
-    plain_client = TestClient(VannaFastAPIServer(StubAgent()).create_app())
+    plain_client = _client(VannaFastAPIServer(StubAgent()).create_app())
     assert (
         plain_client.post(
             "/api/vanna/v3/chat_sse", json={"message": "plain"}
@@ -379,7 +481,7 @@ def test_server_creates_logs_only_when_xpd_logging_is_enabled(tmp_path, monkeypa
         xpd_app = VannaFastAPIServer(
             StubAgent(), config={"_xpd_chat_sse_logging": True}
         ).create_app()
-        xpd_response = TestClient(xpd_app).post(
+        xpd_response = _client(xpd_app).post(
             "/api/vanna/v3/chat_sse", json={"message": "xpd"}
         )
         events = [

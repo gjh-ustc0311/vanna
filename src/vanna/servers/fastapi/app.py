@@ -14,6 +14,12 @@ from ...core import Agent
 from ...web_components import get_component_files
 from ..base import ChatHandler
 from .routes import register_chat_routes
+from .request_headers import (
+    REQUEST_ID_HEADER,
+    TRACE_ID_HEADER,
+    USER_ID_HEADER,
+)
+from .xpd_files import register_xpd_file_routes
 from .xpd_logging import configure_xpd_chat_sse_logger
 
 
@@ -57,6 +63,25 @@ class VannaFastAPIServer:
             cors_params.setdefault("allow_methods", ["*"])
             cors_params.setdefault("allow_headers", ["*"])
 
+            allow_headers = list(cors_params["allow_headers"])
+            if "*" not in allow_headers:
+                existing = {header.lower() for header in allow_headers}
+                for header in (
+                    REQUEST_ID_HEADER,
+                    TRACE_ID_HEADER,
+                    USER_ID_HEADER,
+                ):
+                    if header.lower() not in existing:
+                        allow_headers.append(header)
+                cors_params["allow_headers"] = allow_headers
+
+            expose_headers = list(cors_params.get("expose_headers", []))
+            exposed = {header.lower() for header in expose_headers}
+            for header in (REQUEST_ID_HEADER, TRACE_ID_HEADER):
+                if header.lower() not in exposed:
+                    expose_headers.append(header)
+            cors_params["expose_headers"] = expose_headers
+
             app.add_middleware(CORSMiddleware, **cors_params)
 
         # Serve a version-matched browser client by default. A caller may opt into
@@ -76,9 +101,7 @@ class VannaFastAPIServer:
                     f"{component_bundle}. Run `npm run build` in "
                     "frontends/webcomponent."
                 )
-            app.mount(
-                "/static", StaticFiles(directory=static_folder), name="static"
-            )
+            app.mount("/static", StaticFiles(directory=static_folder), name="static")
 
         # Register routes. XPD client-boundary logging is deliberately enabled
         # only by the private marker set by the XPD CLI path.
@@ -91,6 +114,17 @@ class VannaFastAPIServer:
             self.config,
             chat_sse_logger=chat_sse_logger,
         )
+        xpd_file_store = getattr(self.agent, "xpd_file_store", None)
+        xpd_user_resolver = getattr(self.agent, "xpd_user_resolver", None)
+        if xpd_file_store is not None and xpd_user_resolver is not None:
+            register_xpd_file_routes(
+                app,
+                xpd_file_store,
+                xpd_user_resolver,
+                enable_download=getattr(
+                    self.agent, "xpd_local_file_download_enabled", True
+                ),
+            )
 
         # Add health check
         @app.get("/health")

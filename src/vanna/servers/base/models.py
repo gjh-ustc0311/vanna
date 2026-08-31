@@ -13,7 +13,7 @@ from ...core.user.request_context import RequestContext
 
 
 class ChatRequest(BaseModel):
-    """Request model for chat endpoints."""
+    """Internal chat request after the HTTP adapter attaches correlation data."""
 
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -34,6 +34,28 @@ class ChatRequest(BaseModel):
 
     def attach_request_context(self, context: RequestContext) -> None:
         self._request_context = context
+
+
+class ChatRequestBody(BaseModel):
+    """Strict public JSON body shared by the V3 chat endpoints."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    message: str = Field(description="User message")
+    conversation_id: Optional[str] = Field(default=None, description="Conversation ID")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata"
+    )
+
+    def to_internal(self, *, request_id: str) -> ChatRequest:
+        """Create the internal request without accepting correlation from JSON."""
+
+        return ChatRequest(
+            message=self.message,
+            conversation_id=self.conversation_id,
+            request_id=request_id,
+            metadata=self.metadata,
+        )
 
 
 class ChatStreamChunk(BaseModel):

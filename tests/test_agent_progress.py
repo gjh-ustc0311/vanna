@@ -52,7 +52,10 @@ class RecordingTool(Tool[EmptyArgs]):
         return ToolResult(
             success=True,
             result_for_llm="tool-result",
-            component=TextComponent(text="tool-output"),
+            components=[
+                TextComponent(text="tool-output"),
+                TextComponent(text="tool-output-2"),
+            ],
         )
 
 
@@ -133,6 +136,7 @@ async def test_agent_events_order_and_transport_request_id_propagation():
         "progress",
         "progress",
         "component",
+        "component",
         "progress",
         "component",
     ]
@@ -146,7 +150,7 @@ async def test_agent_events_order_and_transport_request_id_propagation():
         for event in events
         if isinstance(event, AgentComponentEvent)
         and isinstance(event.component, TextComponent)
-    ] == ["tool-output", "final-answer"]
+    ] == ["tool-output", "tool-output-2", "final-answer"]
     assert tool.request_ids == ["wire-request"]
 
 
@@ -161,6 +165,7 @@ async def test_component_api_and_polling_filter_transient_progress():
     ]
     assert [component.text for component in components] == [
         "tool-output",
+        "tool-output-2",
         "final-answer",
     ]
 
@@ -172,10 +177,11 @@ async def test_component_api_and_polling_filter_transient_progress():
             request_id="poll-request",
         )
     )
-    assert response.total_chunks == 2
+    assert response.total_chunks == 3
     assert all(not isinstance(chunk, ChatStreamProgress) for chunk in response.chunks)
     assert [chunk.component.text for chunk in response.chunks] == [
         "tool-output",
+        "tool-output-2",
         "final-answer",
     ]
     assert poll_tool.request_ids == ["poll-request"]

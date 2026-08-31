@@ -33,7 +33,7 @@ from .core import (
     # Components
     Component,
     DataFrameComponent,
-    LinkComponent,
+    FileComponent,
     TextComponent,
     # Core implementations
     Agent,
@@ -97,7 +97,7 @@ __all__ = [
     # Components
     "Component",
     "DataFrameComponent",
-    "LinkComponent",
+    "FileComponent",
     "TextComponent",
     # Core implementations
     "Agent",

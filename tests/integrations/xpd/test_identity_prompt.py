@@ -74,7 +74,9 @@ async def test_identity_and_general_requests_still_call_model(xpd_agent, message
     components = [
         component
         async for component in agent.send_message(
-            RequestContext(), message, conversation_id=f"model-{abs(hash(message))}"
+            RequestContext(user_id="123"),
+            message,
+            conversation_id=f"model-{abs(hash(message))}",
         )
     ]
 
@@ -97,7 +99,9 @@ async def test_general_question_after_greeting_stays_in_the_model_text_path(xpd_
         components = [
             component
             async for component in agent.send_message(
-                RequestContext(), message, conversation_id=conversation_id
+                RequestContext(user_id="123"),
+                message,
+                conversation_id=conversation_id,
             )
         ]
         assert len(components) == 1
@@ -146,7 +150,7 @@ async def test_xpd_agent_uses_safe_chinese_progress_messages(xpd_agent):
     events = [
         event
         async for event in agent.send_message_events(
-            RequestContext(),
+            RequestContext(user_id="123"),
             "你好呀",
             conversation_id="progress-messages",
             request_id="progress-request",

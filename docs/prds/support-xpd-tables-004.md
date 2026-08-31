@@ -1,5 +1,7 @@
 # PRD: 精简 Vanna 组件协议
 
+> File 组件与多组件 ToolResult 已由 [005 PRD](./support-xpd-tables-005.md) 取代本期的 Link/单组件设计。
+
 ## 背景
 
 原协议同时存在 `UiComponent`、`RichComponent` 和 `SimpleComponent`。一次结果

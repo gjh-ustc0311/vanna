@@ -7,10 +7,17 @@ from vanna.core.tool import ToolSchema
 from vanna.core.user import User
 from vanna.core.user.request_context import RequestContext
 from vanna.integrations.xpd import factory
-from vanna.integrations.xpd.factory import FixedLocalXpdUserResolver
+from vanna.integrations.xpd.factory import XpdHeaderUserResolver
 from vanna.integrations.xpd.llm import XpdOpenAILlmService
 from vanna.integrations.local import FileSystemConversationStore
 from vanna.servers.cli.server_runner import main
+
+
+CHAT_HEADERS = {
+    "X-Request-Id": "turn_test",
+    "X-Trace-Id": "trace_test",
+    "X-User-Id": "123",
+}
 
 
 class DummyLlm:
@@ -41,7 +48,7 @@ def test_factory_registers_only_two_group_restricted_tools(
 
     agent = factory.create_xpd_agent(profile_settings)
 
-    assert isinstance(agent.user_resolver, FixedLocalXpdUserResolver)
+    assert isinstance(agent.user_resolver, XpdHeaderUserResolver)
     assert set(_run(agent.tool_registry.list_tools())) == {
         "search_xpd_schema",
         "run_xpd_sql",
@@ -51,39 +58,31 @@ def test_factory_registers_only_two_group_restricted_tools(
     assert agent.config.temperature == 0
     assert isinstance(agent.conversation_store, FileSystemConversationStore)
     assert agent.conversation_store.base_dir == Path("datas/history_storage")
+    assert agent.conversation_store.owner_scoped is True
+    assert agent.xpd_oss_publisher is None
+    assert agent.xpd_file_store.root == Path("datas/files")
+    assert agent.xpd_local_file_download_enabled is True
 
 
-def test_local_xpd_resolver_maps_admin_cookie_to_xpd_admin():
-    resolver = FixedLocalXpdUserResolver()
+def test_xpd_resolver_uses_validated_numeric_header_identity():
+    resolver = XpdHeaderUserResolver()
+    for user_id in ("0", "9223372036854775808", "18446744073709551615"):
+        user = _run(resolver.resolve_user(RequestContext(user_id=user_id)))
 
-    admin = _run(
-        resolver.resolve_user(
-            RequestContext(cookies={"vanna_email": "admin%40example.com"})
-        )
-    )
-    user = _run(
-        resolver.resolve_user(
-            RequestContext(cookies={"vanna_email": "user@example.com"})
-        )
-    )
-
-    assert admin.email == "admin@example.com"
-    assert admin.group_memberships == ["xpd", "admin"]
-    assert user.email == "user@example.com"
-    assert user.group_memberships == ["xpd"]
+        assert user.id == user_id
+        assert user.username == f"xpd-user-{user_id}"
+        assert user.group_memberships == ["xpd"]
 
 
-def test_login_template_uses_server_backed_forms():
+def test_local_template_uses_header_identity_without_cookie_login():
     from vanna.servers.base.templates import get_index_html
 
     html = get_index_html()
-    logged_in = get_index_html(logged_in_email="admin@example.com")
     cdn_html = get_index_html(cdn_url="https://cdn.example.com/vanna.js")
 
-    assert '<form id="loginForm" method="post" action="/login">' in html
-    assert 'name="email"' in html
-    assert 'type="submit" id="loginButton"' in html
-    assert '<form method="post" action="/logout"' in html
+    assert 'action="/login"' not in html
+    assert 'action="/logout"' not in html
+    assert "numeric XPD user ID in local storage" in html
     assert 'sse-endpoint="/api/vanna/v3/chat_sse"' in html
     assert 'poll-endpoint="/api/vanna/v3/chat_poll"' in html
     assert "ws-endpoint" not in html
@@ -92,12 +91,9 @@ def test_login_template_uses_server_backed_forms():
     assert '<script type="module" src="/static/vanna-components.js"></script>' in html
     assert "https://img.vanna.ai" not in html
     assert 'src="https://cdn.example.com/vanna.js"' in cdn_html
-    assert "admin@example.com</span>" in logged_in
-    assert 'id="loginContainer" class="max-w-md' in logged_in
-    assert "border-vanna-teal/30 hidden" in logged_in
 
 
-def test_fastapi_local_login_sets_cookie_and_renders_authenticated_page():
+def test_fastapi_serves_header_identity_page_without_login_routes():
     from fastapi.testclient import TestClient
     from starlette.routing import WebSocketRoute
 
@@ -106,30 +102,22 @@ def test_fastapi_local_login_sets_cookie_and_renders_authenticated_page():
     app = VannaFastAPIServer(None).create_app()  # type: ignore[arg-type]
     client = TestClient(app)
 
-    response = client.post(
-        "/login", data={"email": "admin@example.com"}, follow_redirects=False
-    )
-    authenticated = client.get("/")
-    invalid = client.post(
-        "/login", data={"email": "unknown@example.com"}, follow_redirects=False
-    )
+    index = client.get("/")
     health = client.get("/health")
     route_paths = {route.path for route in app.routes}
 
-    assert response.status_code == 303
-    assert "admin@example.com" in response.headers["set-cookie"]
-    assert "admin@example.com</span>" in authenticated.text
-    assert invalid.status_code == 400
+    assert index.status_code == 200
+    assert "numeric XPD user ID in local storage" in index.text
     assert health.json() == {"status": "healthy", "service": "vanna"}
     assert app.version == "3.0.0"
     assert {
         "/",
-        "/login",
-        "/logout",
         "/api/vanna/v3/chat_sse",
         "/api/vanna/v3/chat_poll",
         "/health",
     } <= route_paths
+    assert "/login" not in route_paths
+    assert "/logout" not in route_paths
     assert "/api/vanna/v2/chat_sse" not in route_paths
     assert "/api/vanna/v2/chat_poll" not in route_paths
     assert not any(isinstance(route, WebSocketRoute) for route in app.routes)
@@ -151,6 +139,50 @@ def test_fastapi_serves_the_version_matched_webcomponent_bundle():
     assert "/api/vanna/v3/chat_sse" in response.text
     assert "Thinking…" in response.text
     assert "Sending message..." not in response.text
+
+
+def test_fastapi_cors_allows_and_exposes_xpd_protocol_headers():
+    from fastapi.testclient import TestClient
+
+    from vanna.servers.fastapi import VannaFastAPIServer
+
+    origin = "https://xpd.example"
+    app = VannaFastAPIServer(  # type: ignore[arg-type]
+        None,
+        config={
+            "cors": {
+                "allow_origins": [origin],
+                "allow_methods": ["POST"],
+                "allow_headers": ["Content-Type"],
+                "expose_headers": ["X-Existing"],
+            }
+        },
+    ).create_app()
+    client = TestClient(app)
+
+    preflight = client.options(
+        "/api/vanna/v3/chat_sse",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": (
+                "Content-Type,X-Request-Id,X-Trace-Id,X-User-Id"
+            ),
+        },
+    )
+    page = client.get("/", headers={"Origin": origin})
+
+    allowed = {
+        value.strip().lower()
+        for value in preflight.headers["access-control-allow-headers"].split(",")
+    }
+    exposed = {
+        value.strip().lower()
+        for value in page.headers["access-control-expose-headers"].split(",")
+    }
+    assert preflight.status_code == 200
+    assert {"x-request-id", "x-trace-id", "x-user-id"} <= allowed
+    assert {"x-request-id", "x-trace-id"} <= exposed
 
 
 def test_fastapi_sse_and_polling_contracts():
@@ -182,17 +214,22 @@ def test_fastapi_sse_and_polling_contracts():
     sse = client.post(
         "/api/vanna/v3/chat_sse",
         json={"message": "hello", "conversation_id": "conv_1"},
+        headers=CHAT_HEADERS,
     )
     poll = client.post(
         "/api/vanna/v3/chat_poll",
         json={"message": "hello", "conversation_id": "conv_1"},
+        headers=CHAT_HEADERS,
     )
 
     assert sse.status_code == 200
+    assert sse.headers["x-request-id"] == "turn_test"
+    assert sse.headers["x-trace-id"] == "trace_test"
     assert sse.headers["content-type"].startswith("text/event-stream")
     assert '"conversation_id":"conv_1"' in sse.text
     assert sse.text.endswith("data: [DONE]\n\n")
     assert poll.status_code == 200
+    assert poll.headers["x-request-id"] == "turn_test"
     assert poll.json()["conversation_id"] == "conv_1"
     assert poll.json()["total_chunks"] == 1
 

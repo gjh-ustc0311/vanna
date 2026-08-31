@@ -44,7 +44,7 @@ from .audit import (
 from ..components import (
     Component,
     DataFrameComponent,
-    LinkComponent,
+    FileComponent,
     TextComponent,
 )
 
@@ -128,7 +128,7 @@ __all__ = [
     # Components
     "Component",
     "DataFrameComponent",
-    "LinkComponent",
+    "FileComponent",
     "TextComponent",
     # Core implementations
     "ToolRegistry",

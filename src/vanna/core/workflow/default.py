@@ -11,6 +11,7 @@ from .base import WorkflowHandler, WorkflowResult
 if TYPE_CHECKING:
     from ..agent.agent import Agent
     from ..storage import Conversation
+    from ..tool import ToolContext
     from ..user.models import User
 
 
@@ -88,9 +89,8 @@ class DefaultWorkflowHandler(WorkflowHandler):
             "Type `/help` to see available commands."
         )
         if "admin" in user.group_memberships:
-            content += (
-                "\n\n**Admin setup:** SQL ✓ | Memory "
-                + ("✓" if analysis["has_memory"] else "✗")
+            content += "\n\n**Admin setup:** SQL ✓ | Memory " + (
+                "✓" if analysis["has_memory"] else "✗"
             )
         return [TextComponent(text=content)]
 
@@ -213,8 +213,7 @@ class DefaultWorkflowHandler(WorkflowHandler):
         except Exception:
             traceback.print_exc()
             return self._text_result(
-                "# ❌ Error Retrieving Memories\n\n"
-                "Recent memories could not be loaded."
+                "# ❌ Error Retrieving Memories\n\nRecent memories could not be loaded."
             )
 
     async def _delete_memory(
@@ -257,7 +256,7 @@ class DefaultWorkflowHandler(WorkflowHandler):
     @staticmethod
     def _memory_context(
         agent: "Agent", user: "User", conversation: "Conversation"
-    ):
+    ) -> Optional["ToolContext"]:
         if not getattr(agent, "agent_memory", None):
             return None
 

@@ -169,7 +169,7 @@ class RunSqlTool(Tool[RunSqlToolArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=result,
-                component=component,
+                components=[component] if component is not None else [],
                 metadata=metadata,
             )
 
@@ -178,7 +178,7 @@ class RunSqlTool(Tool[RunSqlToolArgs]):
             return ToolResult(
                 success=False,
                 result_for_llm=error_message,
-                component=None,
+                components=[],
                 error=str(e),
                 metadata={"error_type": "sql_error"},
             )

@@ -13,6 +13,9 @@
 3、file 名
 - 由你来设计
 
+4、前端展现
+- 由你设计，如在 dataframe 后展现？
+
 ## 文档目录
 - prd 文档：完善的prd 写到 ./docs/prds 目录
 - plan 文档：设计文档 写到 ./docs/plans 目录

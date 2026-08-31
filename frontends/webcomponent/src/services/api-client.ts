@@ -15,19 +15,29 @@ export interface DataFrameComponent {
   truncated: boolean;
 }
 
-export interface LinkComponent {
-  type: 'link';
+export interface FileComponent {
+  type: 'file';
+  name: string;
   url: string;
-  text?: string | null;
+  media_type: string;
+  size_bytes: number;
+  row_count: number;
+  truncated: boolean;
+  expires_at: string;
 }
 
-export type VannaComponent = TextComponent | DataFrameComponent | LinkComponent;
+export type VannaComponent = TextComponent | DataFrameComponent | FileComponent;
 
 export interface ChatRequest {
   message: string;
   conversation_id?: string;
-  request_id?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface ChatRequestHeaders {
+  requestId: string;
+  traceId?: string;
+  userId: string;
 }
 
 export interface ChatStreamChunk {
@@ -82,6 +92,25 @@ export interface ApiClientConfig {
   customHeaders?: Record<string, string>;
 }
 
+const RESERVED_REQUEST_HEADERS = new Set([
+  'content-type',
+  'accept',
+  'x-request-id',
+  'x-trace-id',
+  'x-user-id',
+]);
+const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const CANONICAL_USER_ID = /^(?:0|[1-9][0-9]{0,19})$/;
+const MAX_UINT64 = 18_446_744_073_709_551_615n;
+
+export function isSafeIdentifier(value: string): boolean {
+  return SAFE_IDENTIFIER.test(value);
+}
+
+export function isCanonicalUserId(value: string): boolean {
+  return CANONICAL_USER_ID.test(value) && BigInt(value) <= MAX_UINT64;
+}
+
 export class VannaApiError extends Error {
   constructor(
     message: string,
@@ -131,10 +160,16 @@ export class VannaApiClient {
     this.baseUrl = config.baseUrl ?? '';
     this.sseEndpoint = config.sseEndpoint ?? '/api/vanna/v3/chat_sse';
     this.pollEndpoint = config.pollEndpoint ?? '/api/vanna/v3/chat_poll';
-    this.customHeaders = config.customHeaders ?? {};
+    this.customHeaders = {};
+    this.setCustomHeaders(config.customHeaders ?? {});
   }
 
   setCustomHeaders(headers: Record<string, string>): void {
+    for (const name of Object.keys(headers)) {
+      if (RESERVED_REQUEST_HEADERS.has(name.toLowerCase())) {
+        throw new VannaApiError(`The ${name} header is managed by the Vanna protocol.`);
+      }
+    }
     this.customHeaders = { ...headers };
   }
 
@@ -144,16 +179,14 @@ export class VannaApiClient {
 
   async *streamChat(
     request: ChatRequest,
+    requestHeaders: ChatRequestHeaders,
   ): AsyncGenerator<ChatStreamPayload, void, unknown> {
     const response = await fetch(this.resolveUrl(this.sseEndpoint), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        ...this.customHeaders,
-      },
+      headers: this.buildHeaders(requestHeaders, 'text/event-stream'),
       body: JSON.stringify(request),
     });
+    this.assertResponseCorrelation(response, requestHeaders);
     await this.assertOk(response);
 
     const reader = response.body?.getReader();
@@ -170,7 +203,10 @@ export class VannaApiClient {
         for (const event of events) {
           const payload = this.parseSseEvent(event);
           if (payload === null) return;
-          if (payload) yield payload;
+          if (payload) {
+            this.assertPayloadCorrelation(payload, requestHeaders.requestId);
+            yield payload;
+          }
         }
         if (done) break;
       }
@@ -178,7 +214,10 @@ export class VannaApiClient {
       if (buffer.trim()) {
         const payload = this.parseSseEvent(buffer);
         if (payload === null) return;
-        if (payload) yield payload;
+        if (payload) {
+          this.assertPayloadCorrelation(payload, requestHeaders.requestId);
+          yield payload;
+        }
       }
       throw new VannaApiError('The server ended the stream before [DONE].');
     } finally {
@@ -186,21 +225,42 @@ export class VannaApiClient {
     }
   }
 
-  async sendPollMessage(request: ChatRequest): Promise<ChatResponse> {
+  async sendPollMessage(
+    request: ChatRequest,
+    requestHeaders: ChatRequestHeaders,
+  ): Promise<ChatResponse> {
     const response = await fetch(this.resolveUrl(this.pollEndpoint), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.customHeaders,
-      },
+      headers: this.buildHeaders(requestHeaders, 'application/json'),
       body: JSON.stringify(request),
     });
+    this.assertResponseCorrelation(response, requestHeaders);
     await this.assertOk(response);
     const payload: unknown = await response.json();
     if (!isChatResponse(payload)) {
       throw new VannaApiError('The server returned an invalid polling response.');
     }
+    this.assertPayloadCorrelation(payload, requestHeaders.requestId);
     return payload;
+  }
+
+  async downloadLocalFile(url: string, userId: string): Promise<Blob> {
+    const resolvedUrl = this.resolveLocalFileUrl(url);
+    if (!resolvedUrl || !isCanonicalUserId(userId)) {
+      throw new VannaApiError('The local file request is invalid.');
+    }
+    const response = await fetch(resolvedUrl, {
+      method: 'GET',
+      headers: { 'X-User-Id': userId },
+    });
+    if (!response.ok) {
+      throw new VannaApiError(
+        `File download failed with HTTP ${response.status}.`,
+        'file_download_error',
+        response.status,
+      );
+    }
+    return response.blob();
   }
 
   generateId(): string {
@@ -210,6 +270,62 @@ export class VannaApiClient {
 
   private resolveUrl(endpoint: string): string {
     return /^https?:\/\//i.test(endpoint) ? endpoint : `${this.baseUrl}${endpoint}`;
+  }
+
+  private resolveLocalFileUrl(url: string): string | null {
+    const value = url.trim();
+    if (!value || value.startsWith('//') || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value)) {
+      return null;
+    }
+    const browserOrigin = globalThis.location?.origin ?? 'http://localhost';
+    try {
+      const serviceOrigin = new URL(this.baseUrl || '/', browserOrigin).origin;
+      const resolved = this.resolveUrl(value);
+      return new URL(resolved, browserOrigin).origin === serviceOrigin ? resolved : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private buildHeaders(
+    headers: ChatRequestHeaders,
+    accept: 'text/event-stream' | 'application/json',
+  ): Record<string, string> {
+    if (!isSafeIdentifier(headers.requestId)
+      || (headers.traceId !== undefined && !isSafeIdentifier(headers.traceId))
+      || !isCanonicalUserId(headers.userId)
+    ) {
+      throw new VannaApiError('The request correlation headers are invalid.');
+    }
+    return {
+      ...this.customHeaders,
+      'Content-Type': 'application/json',
+      Accept: accept,
+      'X-Request-Id': headers.requestId,
+      ...(headers.traceId ? { 'X-Trace-Id': headers.traceId } : {}),
+      'X-User-Id': headers.userId,
+    };
+  }
+
+  private assertResponseCorrelation(
+    response: Response,
+    headers: ChatRequestHeaders,
+  ): void {
+    const expectedTraceId = headers.traceId ?? headers.requestId;
+    if (response.headers.get('X-Request-Id') !== headers.requestId
+      || response.headers.get('X-Trace-Id') !== expectedTraceId
+    ) {
+      throw new VannaApiError('The server returned mismatched request correlation.');
+    }
+  }
+
+  private assertPayloadCorrelation(
+    payload: ChatStreamPayload | ChatResponse,
+    requestId: string,
+  ): void {
+    if (payload.request_id !== requestId) {
+      throw new VannaApiError('The server returned mismatched request correlation.');
+    }
   }
 
   private parseSseEvent(event: string): ChatStreamPayload | null | undefined {
@@ -271,11 +387,27 @@ function isComponent(value: unknown): value is VannaComponent {
   if (value.type === 'text') {
     return hasOnlyKeys(value, ['type', 'text']) && typeof value.text === 'string';
   }
-  if (value.type === 'link') {
-    return hasOnlyKeys(value, ['type', 'url', 'text'])
+  if (value.type === 'file') {
+    return hasOnlyKeys(value, [
+      'type', 'name', 'url', 'media_type', 'size_bytes', 'row_count', 'truncated', 'expires_at',
+    ])
+      && typeof value.name === 'string'
+      && value.name.length >= 1
+      && value.name.length <= 255
+      && value.name.trim() === value.name
+      && !/[\\/\u0000-\u001f\u007f]/.test(value.name)
       && typeof value.url === 'string'
       && isSafeLink(value.url)
-      && (value.text === undefined || value.text === null || typeof value.text === 'string');
+      && typeof value.media_type === 'string'
+      && /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(value.media_type)
+      && Number.isSafeInteger(value.size_bytes)
+      && (value.size_bytes as number) >= 0
+      && Number.isSafeInteger(value.row_count)
+      && (value.row_count as number) >= 0
+      && typeof value.truncated === 'boolean'
+      && typeof value.expires_at === 'string'
+      && /^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value.expires_at)
+      && Number.isFinite(Date.parse(value.expires_at));
   }
   if (value.type === 'dataframe') {
     if (!hasOnlyKeys(value, ['type', 'columns', 'rows', 'title', 'truncated'])

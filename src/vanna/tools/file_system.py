@@ -375,7 +375,7 @@ class SearchFilesTool(Tool[SearchFilesArgs]):
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                component=None,
+                components=[],
                 error=str(exc),
             )
 
@@ -384,7 +384,7 @@ class SearchFilesTool(Tool[SearchFilesArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=message,
-                component=None,
+                components=[],
             )
 
         lines: List[str] = []
@@ -411,7 +411,7 @@ class SearchFilesTool(Tool[SearchFilesArgs]):
         return ToolResult(
             success=True,
             result_for_llm=f"{summary}\n{content}",
-            component=None,
+            components=[],
         )
 
 
@@ -455,14 +455,14 @@ class ListFilesTool(Tool[ListFilesArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=result,
-                component=None,
+                components=[],
             )
         except Exception as e:
             error_msg = f"Error listing files: {str(e)}"
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                component=None,
+                components=[],
                 error=str(e),
             )
 
@@ -499,14 +499,14 @@ class ReadFileTool(Tool[ReadFileArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=result,
-                component=None,
+                components=[],
             )
         except Exception as e:
             error_msg = f"Error reading file: {str(e)}"
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                component=None,
+                components=[],
                 error=str(e),
             )
 
@@ -550,14 +550,14 @@ class WriteFileTool(Tool[WriteFileArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=success_msg,
-                component=None,
+                components=[],
             )
         except Exception as e:
             error_msg = f"Error writing file: {str(e)}"
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                component=None,
+                components=[],
                 error=str(e),
             )
 
@@ -624,7 +624,7 @@ class EditFileTool(Tool[EditFileArgs]):
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                component=None,
+                components=[],
                 error=str(exc),
             )
 
@@ -703,7 +703,7 @@ class EditFileTool(Tool[EditFileArgs]):
             return ToolResult(
                 success=True,
                 result_for_llm=message,
-                component=None,
+                components=[],
             )
 
         try:
@@ -715,7 +715,7 @@ class EditFileTool(Tool[EditFileArgs]):
             return ToolResult(
                 success=False,
                 result_for_llm=error_msg,
-                component=None,
+                components=[],
                 error=str(exc),
             )
 
@@ -740,7 +740,7 @@ class EditFileTool(Tool[EditFileArgs]):
         return ToolResult(
             success=True,
             result_for_llm=f"{summary}\n\n{diff_text}",
-            component=None,
+            components=[],
         )
 
     def _range_error(
@@ -750,7 +750,7 @@ class EditFileTool(Tool[EditFileArgs]):
         return ToolResult(
             success=False,
             result_for_llm=error_msg,
-            component=None,
+            components=[],
             error=message,
         )
 

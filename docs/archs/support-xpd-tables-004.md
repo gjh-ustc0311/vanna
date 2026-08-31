@@ -1,5 +1,7 @@
 # 架构: Append-only 三组件协议
 
+> File 组件与多组件 ToolResult 架构已由 [005 架构](./support-xpd-tables-005.md) 取代。
+
 ## 决策
 
 Vanna 3.0 的展示边界是一个扁平、强类型、append-only 的判别联合：

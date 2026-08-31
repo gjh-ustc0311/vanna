@@ -194,3 +194,50 @@ async def test_file_store_rejects_corrupt_existing_owner_metadata(tmp_path):
     assert json.loads((conversation_dir / "metadata.json").read_text()) == {
         "unexpected": True
     }
+
+
+@pytest.mark.asyncio
+async def test_owner_scoped_store_allows_same_conversation_id_for_two_users(tmp_path):
+    base_dir = tmp_path / "history"
+    store = FileSystemConversationStore(
+        str(base_dir),
+        conversation_id_pattern=SAFE_ID_PATTERN,
+        owner_scoped=True,
+    )
+    first = User(id="123")
+    second = User(id="456")
+
+    await store.update_conversation(
+        Conversation(
+            id="shared_conversation",
+            user=first,
+            messages=[Message(role="user", content="first owner")],
+        )
+    )
+    await store.update_conversation(
+        Conversation(
+            id="shared_conversation",
+            user=second,
+            messages=[Message(role="user", content="second owner")],
+        )
+    )
+
+    first_result = await store.get_conversation("shared_conversation", first)
+    second_result = await store.get_conversation("shared_conversation", second)
+    assert first_result is not None
+    assert second_result is not None
+    assert first_result.messages[0].content == "first owner"
+    assert second_result.messages[0].content == "second owner"
+    assert len([path for path in base_dir.iterdir() if path.is_dir()]) == 2
+    assert (await store.list_conversations(first))[0].messages[
+        0
+    ].content == "first owner"
+    assert (await store.list_conversations(second))[0].messages[
+        0
+    ].content == "second owner"
+
+    assert await store.delete_conversation("shared_conversation", first) is True
+    assert await store.get_conversation("shared_conversation", first) is None
+    remaining = await store.get_conversation("shared_conversation", second)
+    assert remaining is not None
+    assert remaining.messages[0].content == "second owner"

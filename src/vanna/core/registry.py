@@ -153,7 +153,7 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=msg,
-                component=None,
+                components=[],
                 error=msg,
             )
 
@@ -179,7 +179,7 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=msg,
-                component=None,
+                components=[],
                 error=msg,
             )
 
@@ -192,7 +192,7 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=msg,
-                component=None,
+                components=[],
                 error=msg,
             )
 
@@ -208,7 +208,7 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=transform_result.reason,
-                component=None,
+                components=[],
                 error=transform_result.reason,
             )
 
@@ -270,6 +270,6 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 result_for_llm=msg,
-                component=None,
+                components=[],
                 error=msg,
             )

@@ -4,7 +4,7 @@ from .models import (
     Component,
     DataFrameComponent,
     JsonScalar,
-    LinkComponent,
+    FileComponent,
     TextComponent,
 )
 
@@ -12,6 +12,6 @@ __all__ = [
     "Component",
     "DataFrameComponent",
     "JsonScalar",
-    "LinkComponent",
+    "FileComponent",
     "TextComponent",
 ]

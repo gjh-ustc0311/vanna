@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Optional
-from urllib.parse import unquote
 
 from vanna.capabilities.agent_memory import AgentMemory
 from vanna.core import (
@@ -16,12 +15,14 @@ from vanna.core import (
     ToolRegistry,
 )
 from vanna.core.user import User
+from vanna.core.user.identifiers import is_canonical_uint64
 from vanna.core.user.request_context import RequestContext
 from vanna.core.user.resolver import UserResolver
 from vanna.integrations.local import FileSystemConversationStore
 from vanna.integrations.local.agent_memory import DemoAgentMemory
 
 from .config import XpdProfileSettings
+from .files import XpdFileStore, XpdOssPublisher
 from .llm import XpdOpenAILlmService
 from .runner import XpdReadOnlyRunner
 from .schema import XpdSchemaCatalog
@@ -54,38 +55,25 @@ XPD 数据任务必须严格遵守以下工作流：
 2. 只能根据工具返回的字段、粒度、关系和可用指标编写 SQL；不得猜测字段。
 3. 需要查询时，只调用 run_xpd_sql，且只提交一个 MySQL SELECT 或带 CTE 的 SELECT。
 4. 只能访问三张获批表：tb_live_goods_daily_stats、tb_live_goods_session_stats、tb_live_session_endtime_stats。
-5. 不请求或生成写操作、跨库访问、文件导出、EXPLAIN、SELECT * 或未经证据确认的 JOIN。
-6. 原始查询表格会直接展示给用户。你的最终回答应简洁解释口径、时间范围、主要发现和截断状态，不要重复粘贴整张表。
+5. 不请求或生成写操作、跨库访问、EXPLAIN、SELECT * 或未经证据确认的 JOIN。只允许工具自动生成受控 XLSX 查询结果文件。
+6. 原始查询前 30 行会直接展示给用户；超过 30 行时工具会尝试提供最多 20,000 行的 XLSX。你的最终回答应简洁解释口径、时间范围、主要发现、文件可用状态和截断状态，不要重复粘贴整张表，也不得把已截断文件描述为完整结果。
 7. 如果 Schema、SQL、安全策略或数据库返回稳定错误，如实说明，不要绕过限制。
 """
 
 
-class FixedLocalXpdUserResolver(UserResolver):
-    """Resolve the two local demo identities without adding remote authentication."""
+class XpdHeaderUserResolver(UserResolver):
+    """Trust the numeric user identity validated by the HTTP boundary."""
 
     async def resolve_user(self, request_context: RequestContext) -> User:
-        selected_email = unquote(request_context.get_cookie("vanna_email") or "")
-        if selected_email == "admin@example.com":
-            return User(
-                id="xpd-local-admin",
-                username="xpd-local-admin",
-                email=selected_email,
-                group_memberships=["xpd", "admin"],
-                metadata={"deployment": "local-loopback"},
-            )
-        if selected_email == "user@example.com":
-            return User(
-                id="xpd-local-user",
-                username="xpd-local-user",
-                email=selected_email,
-                group_memberships=["xpd"],
-                metadata={"deployment": "local-loopback"},
-            )
+        user_id = request_context.user_id or request_context.get_header("X-User-Id")
+        if not is_canonical_uint64(user_id):
+            raise ValueError("A validated X-User-Id is required.")
+        assert isinstance(user_id, str)
         return User(
-            id="xpd-local-user",
-            username="xpd-local-user",
+            id=user_id,
+            username=f"xpd-user-{user_id}",
             group_memberships=["xpd"],
-            metadata={"deployment": "local-loopback"},
+            metadata={"identity_source": "trusted-x-user-id"},
         )
 
 
@@ -99,12 +87,26 @@ def create_xpd_agent(
 
     catalog = XpdSchemaCatalog(settings.database)
     evidence = catalog.load()
+    file_store = XpdFileStore()
+    file_store.initialize()
+    oss_publisher = None
+    if settings.oss.enabled:
+        oss_publisher = XpdOssPublisher(settings.oss, settings.oss_access)
+        oss_publisher.initialize()
+        file_store.set_remote_deleter(oss_publisher.delete)
     guard = XpdSqlGuard(evidence)
-    runner = XpdReadOnlyRunner(settings.database, guard)
+    runner = XpdReadOnlyRunner(settings.database, guard, file_store=file_store)
 
     registry = ToolRegistry()
     registry.register_local_tool(SearchXpdSchemaTool(catalog), access_groups=["xpd"])
-    registry.register_local_tool(RunXpdSqlTool(runner), access_groups=["xpd"])
+    registry.register_local_tool(
+        RunXpdSqlTool(
+            runner,
+            file_store=file_store,
+            oss_publisher=oss_publisher,
+        ),
+        access_groups=["xpd"],
+    )
 
     llm_service = XpdOpenAILlmService(
         model=settings.model.name,
@@ -114,14 +116,16 @@ def create_xpd_agent(
         max_retries=0,
     )
     memory = agent_memory or DemoAgentMemory(max_items=1_000)
+    active_user_resolver = user_resolver or XpdHeaderUserResolver()
     agent = Agent(
         llm_service=llm_service,
         tool_registry=registry,
-        user_resolver=user_resolver or FixedLocalXpdUserResolver(),
+        user_resolver=active_user_resolver,
         agent_memory=memory,
         conversation_store=FileSystemConversationStore(
             base_dir=XPD_HISTORY_STORAGE_DIR,
             conversation_id_pattern=XPD_CONVERSATION_ID_PATTERN,
+            owner_scoped=True,
         ),
         config=AgentConfig(
             max_tool_iterations=6,
@@ -170,4 +174,8 @@ def create_xpd_agent(
     # Intentionally process-local: useful for readiness introspection without adding
     # a public server dependency or persisting any profile/schema contents.
     agent.xpd_schema_catalog = catalog  # type: ignore[attr-defined]
+    agent.xpd_file_store = file_store  # type: ignore[attr-defined]
+    agent.xpd_oss_publisher = oss_publisher  # type: ignore[attr-defined]
+    agent.xpd_user_resolver = active_user_resolver  # type: ignore[attr-defined]
+    agent.xpd_local_file_download_enabled = oss_publisher is None  # type: ignore[attr-defined]
     return agent

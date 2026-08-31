@@ -7,7 +7,7 @@ import re
 import stat
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Mapping, Union
+from typing import Any, Dict, Mapping, Optional, Union
 from urllib.parse import urlparse
 
 import yaml
@@ -18,6 +18,7 @@ from pydantic import (
     SecretStr,
     ValidationError,
     field_validator,
+    model_validator,
 )
 from yaml.tokens import AliasToken, AnchorToken
 
@@ -80,6 +81,103 @@ class XpdDatabaseSettings(BaseModel):
         return value
 
 
+class XpdOssSettings(BaseModel):
+    """Strict private OSS upload settings retained from the external profile."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    enabled: bool = False
+    endpoint: Optional[str] = None
+    region: Optional[str] = Field(default=None, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+    bucket: Optional[str] = Field(
+        default=None, pattern=r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$"
+    )
+    prefix: Optional[str] = None
+    access_key_id: Optional[SecretStr] = None
+    access_key_secret: Optional[SecretStr] = None
+    security_token: Optional[SecretStr] = None
+
+    @field_validator("endpoint")
+    @classmethod
+    def validate_endpoint(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        parsed = urlparse(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("endpoint must be a bare HTTPS URL") from exc
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or port not in {None, 443}
+        ):
+            raise ValueError("endpoint must be a bare HTTPS URL")
+        return value.rstrip("/")
+
+    @field_validator("prefix")
+    @classmethod
+    def validate_prefix(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        normalized = value.strip().strip("/")
+        parts = normalized.split("/") if normalized else []
+        if (
+            not parts
+            or len(normalized) > 512
+            or any(part in {"", ".", ".."} or "\\" in part for part in parts)
+        ):
+            raise ValueError("prefix is invalid")
+        return "/".join(parts)
+
+    @model_validator(mode="after")
+    def require_enabled_settings(self) -> "XpdOssSettings":
+        if not self.enabled:
+            return self
+        required = (
+            self.endpoint,
+            self.region,
+            self.bucket,
+            self.prefix,
+            self.access_key_id,
+            self.access_key_secret,
+        )
+        if any(value is None for value in required):
+            raise ValueError(
+                "enabled OSS requires endpoint, region, bucket, prefix, and credentials"
+            )
+        for secret in (self.access_key_id, self.access_key_secret):
+            if secret is None or not secret.get_secret_value().strip():
+                raise ValueError("enabled OSS credentials must not be empty")
+        if (
+            self.security_token is not None
+            and not self.security_token.get_secret_value().strip()
+        ):
+            raise ValueError("security_token must not be empty")
+        return self
+
+
+class XpdOssAccessSettings(BaseModel):
+    """Local-profile OSS access policy."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    provider: str = "oss_presign"
+    url_ttl_seconds: int = Field(default=86_400, ge=60, le=604_800)
+
+    @field_validator("provider")
+    @classmethod
+    def require_oss_presign(cls, value: str) -> str:
+        if value != "oss_presign":
+            raise ValueError("local profile must use oss_presign")
+        return value
+
+
 class XpdProfileSettings(BaseModel):
     """The only profile fields the Vanna XPD adapter accepts or retains."""
 
@@ -89,6 +187,8 @@ class XpdProfileSettings(BaseModel):
     profile: str
     model: XpdModelSettings
     database: XpdDatabaseSettings
+    oss: XpdOssSettings = Field(default_factory=XpdOssSettings)
+    oss_access: XpdOssAccessSettings = Field(default_factory=XpdOssAccessSettings)
 
     @field_validator("schema_version")
     @classmethod
@@ -188,6 +288,8 @@ def load_xpd_profile(
         "profile": loaded.get("profile"),
         "model": loaded.get("model"),
         "database": loaded.get("database"),
+        "oss": loaded.get("oss", {}),
+        "oss_access": loaded.get("oss_access", {}),
     }
     try:
         settings = XpdProfileSettings.model_validate(approved)

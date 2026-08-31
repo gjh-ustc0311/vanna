@@ -106,7 +106,7 @@ class WorkflowHandler(ABC):
                 if message.startswith("/report"):
                     tool = await agent.tool_registry.get_tool("generate_report")
                     result = await tool.execute(ToolContext(user=user), {})
-                    components = [result.component] if result.component else None
+        components = result.components or None
                     return WorkflowResult(should_skip_llm=True, components=components)
 
                 # Not handled, continue to agent

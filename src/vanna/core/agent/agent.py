@@ -690,8 +690,9 @@ class Agent:
                     # Only successful, user-facing tool payloads enter the chat.
                     # Tool failures remain in the LLM/audit path and are summarized
                     # by the final assistant text.
-                    if result.success and result.component is not None:
-                        yield AgentComponentEvent(component=result.component)
+                    if result.success:
+                        for component in result.components:
+                            yield AgentComponentEvent(component=component)
 
                     progress_update = (
                         progress_spec.succeeded

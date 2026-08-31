@@ -47,15 +47,15 @@ class ToolResult(BaseModel):
 
     Changes:
     - `result_for_llm`: string that will be sent back to the LLM.
-    - `component`: optional UI payload for rendering in clients.
+    - `components`: ordered UI payloads for rendering in clients.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     success: bool = Field(description="Whether execution succeeded")
     result_for_llm: str = Field(description="String content to send back to the LLM")
-    component: Optional[Component] = Field(
-        default=None, description="Optional component for rendering"
+    components: List[Component] = Field(
+        default_factory=list, description="Ordered components for rendering"
     )
     error: Optional[str] = Field(default=None, description="Error message if failed")
     metadata: Dict[str, Any] = Field(default_factory=dict)

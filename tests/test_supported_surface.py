@@ -72,20 +72,30 @@ def test_removed_packages_do_not_import(module_name):
 
 
 def test_core_evaluation_and_three_component_protocol_are_supported():
+    from datetime import datetime, timezone
+
     from vanna import EvaluationRunner, __version__
-    from vanna.components import DataFrameComponent, LinkComponent, TextComponent
+    from vanna.components import DataFrameComponent, FileComponent, TextComponent
 
     components = [
         TextComponent(text="answer"),
         DataFrameComponent(columns=["value"], rows=[{"value": 1}]),
-        LinkComponent(url="/report", text="Report"),
+        FileComponent(
+            name="report.xlsx",
+            url="/report",
+            media_type="application/octet-stream",
+            size_bytes=1,
+            row_count=1,
+            truncated=False,
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ),
     ]
 
     assert EvaluationRunner is not None
     assert [component.type for component in components] == [
         "text",
         "dataframe",
-        "link",
+        "file",
     ]
     assert __version__ == "3.0.0"
 
@@ -138,8 +148,8 @@ async def test_run_sql_keeps_generic_file_output_without_chart_instruction(tmp_p
     )
 
     assert result.success
-    assert result.component is not None
-    assert result.component.type == "dataframe"
+    assert result.components
+    assert result.components[0].type == "dataframe"
     assert "Results saved to file:" in result.result_for_llm
     assert "visualize" not in result.result_for_llm.lower()
     assert await file_system.read_file(result.metadata["output_file"], context)

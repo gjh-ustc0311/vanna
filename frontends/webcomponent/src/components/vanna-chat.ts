@@ -5,15 +5,18 @@ import './vanna-message.js';
 import { vannaDesignTokens } from '../styles/vanna-design-tokens.js';
 import {
   type ChatRequest,
+  type ChatRequestHeaders,
   type ChatStreamChunk,
   type ChatStreamProgress,
   type DataFrameComponent,
+  type FileComponent,
   type JsonScalar,
   type VannaComponent,
   VannaApiClient,
   VannaApiError,
   isChatStreamError,
   isChatStreamProgress,
+  isCanonicalUserId,
   isSafeLink,
 } from '../services/api-client.js';
 
@@ -60,14 +63,34 @@ export class VannaChat extends LitElement {
       }
 
       header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vanna-space-4);
         padding: var(--vanna-space-5) var(--vanna-space-6);
         border-bottom: 1px solid var(--vanna-outline-dimmer);
       }
+      .heading { min-width: 0; }
       h1 { margin: 0; font-size: 18px; font-weight: 650; }
       .subtitle {
         margin: 4px 0 0;
         color: var(--vanna-foreground-dimmer);
         font-size: 13px;
+      }
+      .user-switch {
+        display: grid;
+        gap: 3px;
+        color: var(--vanna-foreground-dimmer);
+        font-size: 11px;
+      }
+      .user-switch input {
+        width: 150px;
+        padding: 6px 8px;
+        border: 1px solid var(--vanna-outline-default);
+        border-radius: 8px;
+        background: var(--vanna-background-root);
+        color: var(--vanna-foreground-default);
+        font: inherit;
       }
 
       .messages {
@@ -113,18 +136,43 @@ export class VannaChat extends LitElement {
         color: var(--vanna-foreground-dimmer);
         font-size: 12px;
       }
-      .link-card {
-        display: inline-flex;
+      .file-card {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
         align-items: center;
-        min-height: 40px;
-        padding: 0 14px;
+        gap: 12px;
+        padding: 13px 14px;
         border: 1px solid var(--vanna-outline-default);
-        border-radius: 10px;
+        border-radius: 12px;
+        background: var(--vanna-background-root);
         color: var(--vanna-accent-primary-default);
-        font-weight: 600;
         text-decoration: none;
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
       }
-      .link-card:hover { background: var(--vanna-background-higher); }
+      .file-card:hover { background: var(--vanna-background-higher); }
+      .file-icon { font-size: 22px; line-height: 1; }
+      .file-copy { min-width: 0; }
+      .file-title { display: block; font-weight: 650; }
+      .file-name {
+        display: block;
+        overflow: hidden;
+        margin-top: 3px;
+        color: var(--vanna-foreground-dimmer);
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .file-meta, .file-warning {
+        margin: 7px 0 0;
+        color: var(--vanna-foreground-dimmer);
+        font-size: 12px;
+      }
+      .file-warning { color: var(--vanna-warning-default, #9a6700); }
+      .file-action { font-size: 13px; font-weight: 650; }
 
       .busy {
         margin: 0 0 var(--vanna-space-4);
@@ -168,7 +216,7 @@ export class VannaChat extends LitElement {
         border-color: var(--vanna-accent-primary-default);
         outline: 2px solid color-mix(in srgb, var(--vanna-accent-primary-default) 20%, transparent);
       }
-      button {
+      form > button {
         min-width: 82px;
         border: 0;
         border-radius: 10px;
@@ -178,7 +226,7 @@ export class VannaChat extends LitElement {
         font-weight: 650;
         cursor: pointer;
       }
-      button:disabled, textarea:disabled { cursor: not-allowed; opacity: 0.55; }
+      form > button:disabled, textarea:disabled { cursor: not-allowed; opacity: 0.55; }
 
       :host([theme='dark']) .shell,
       :host([theme='dark']) .table-card,
@@ -204,6 +252,7 @@ export class VannaChat extends LitElement {
   @property({ attribute: 'api-base' }) apiBaseUrl = '';
   @property({ attribute: 'sse-endpoint' }) sseEndpoint = '/api/vanna/v3/chat_sse';
   @property({ attribute: 'poll-endpoint' }) pollEndpoint = '/api/vanna/v3/chat_poll';
+  @property({ attribute: 'user-id' }) userId = '';
 
   @state() private currentMessage = '';
   @state() private busy = false;
@@ -213,9 +262,16 @@ export class VannaChat extends LitElement {
 
   private conversationId = this.generateId();
   private customHeaders: Record<string, string> = {};
+  private starterRequested = false;
+  private static readonly localUserStorageKey = 'vanna-xpd-user-id';
 
-  protected firstUpdated(): void {
-    void this.requestStarter();
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.userId = this.resolveLocalUserId(this.userId);
+    if (!this.starterRequested) {
+      this.starterRequested = true;
+      void this.requestStarter();
+    }
   }
 
   render() {
@@ -223,8 +279,21 @@ export class VannaChat extends LitElement {
     return html`
       <section class="shell" aria-busy=${String(this.busy)}>
         <header>
-          <h1>${this.title}</h1>
-          ${this.subtitle ? html`<p class="subtitle">${this.subtitle}</p>` : nothing}
+          <div class="heading">
+            <h1>${this.title}</h1>
+            ${this.subtitle ? html`<p class="subtitle">${this.subtitle}</p>` : nothing}
+          </div>
+          <label class="user-switch">
+            XPD User ID
+            <input
+              .value=${this.userId}
+              ?disabled=${this.busy}
+              inputmode="numeric"
+              pattern="(?:0|[1-9][0-9]*)"
+              maxlength="20"
+              @change=${this.handleUserIdChange}
+            >
+          </label>
         </header>
         <main class="messages" aria-live="polite">
           ${this.items.length === 0 && !this.busy
@@ -317,11 +386,16 @@ export class VannaChat extends LitElement {
     this.currentProgress = null;
     this.showBusyStatus = !silent;
     const client = this.createClient();
-    const payload = { ...request, request_id: client.generateId() };
+    const requestId = `turn_${client.generateId()}`;
+    const streamHeaders: ChatRequestHeaders = {
+      requestId,
+      traceId: `trace_${client.generateId()}`,
+      userId: this.userId,
+    };
     let receivedPayload = false;
     try {
       try {
-        for await (const chunk of client.streamChat(payload)) {
+        for await (const chunk of client.streamChat(request, streamHeaders)) {
           receivedPayload = true;
           if (isChatStreamError(chunk)) {
             throw new VannaApiError(chunk.error.message, chunk.error.code);
@@ -335,7 +409,7 @@ export class VannaChat extends LitElement {
       } catch (error) {
         if (receivedPayload) throw error;
       }
-      if (!receivedPayload) await this.consumePoll(client, payload);
+      if (!receivedPayload) await this.consumePoll(client, request, requestId);
     } catch (error) {
       if (!silent) this.appendError(error);
     } finally {
@@ -346,8 +420,16 @@ export class VannaChat extends LitElement {
     }
   }
 
-  private async consumePoll(client: VannaApiClient, request: ChatRequest): Promise<void> {
-    const response = await client.sendPollMessage(request);
+  private async consumePoll(
+    client: VannaApiClient,
+    request: ChatRequest,
+    requestId: string,
+  ): Promise<void> {
+    const response = await client.sendPollMessage(request, {
+      requestId,
+      traceId: `trace_${client.generateId()}`,
+      userId: this.userId,
+    });
     for (const chunk of response.chunks) this.appendChunk(chunk);
   }
 
@@ -413,19 +495,69 @@ export class VannaChat extends LitElement {
       ></vanna-message>`;
     }
     if (component.type === 'dataframe') return this.renderDataFrame(component);
+    return this.renderFile(component, item.timestamp);
+  }
+
+  private renderFile(component: FileComponent, timestamp: number) {
     if (!isSafeLink(component.url)) {
       return html`<vanna-message
         type="assistant"
-        content="Unsupported link"
-        .timestamp=${item.timestamp}
+        content="Unsupported file URL"
+        .timestamp=${timestamp}
         theme=${this.theme}
       ></vanna-message>`;
     }
+    const opensNewWindow = /^https?:\/\//i.test(component.url);
+    const contents = html`
+        <span class="file-icon" aria-hidden="true">⇩</span>
+        <span class="file-copy">
+          <span class="file-title">下载查询结果</span>
+          <span class="file-name">${component.name}</span>
+          <span class="file-meta">
+            XLSX · ${this.formatBytes(component.size_bytes)} ·
+            ${component.row_count.toLocaleString('en-US')} 行 ·
+            有效期至 ${this.formatExpiry(component.expires_at)}
+          </span>
+          ${component.truncated
+            ? html`<span class="file-warning">结果已截断，仅包含前 20,000 行。</span>`
+            : nothing}
+        </span>
+        <span class="file-action">下载</span>
+    `;
     return html`<div class="component">
-      <a class="link-card" href=${component.url} target="_blank" rel="noopener noreferrer">
-        ${component.text || component.url}
-      </a>
+      ${opensNewWindow
+        ? html`<a
+            class="file-card"
+            href=${component.url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >${contents}</a>`
+        : html`<button
+            type="button"
+            class="file-card"
+            @click=${() => this.downloadLocalFile(component)}
+          >${contents}</button>`}
     </div>`;
+  }
+
+  private async downloadLocalFile(component: FileComponent): Promise<void> {
+    try {
+      const blob = await this.createClient().downloadLocalFile(component.url, this.userId);
+      const objectUrl = URL.createObjectURL(blob);
+      try {
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = component.name;
+        anchor.hidden = true;
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (error) {
+      this.appendError(error);
+    }
   }
 
   private renderDataFrame(component: DataFrameComponent) {
@@ -443,8 +575,23 @@ export class VannaChat extends LitElement {
           </tbody>
         </table>
       </div>
-      ${component.truncated ? html`<p class="table-note">Showing the first 100 rows.</p>` : nothing}
+      ${component.truncated
+        ? html`<p class="table-note">Showing the first ${component.rows.length} rows.</p>`
+        : nothing}
     </section>`;
+  }
+
+  private formatBytes(sizeBytes: number): string {
+    if (sizeBytes < 1024) return `${sizeBytes} B`;
+    if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  private formatExpiry(value: string): string {
+    return new Intl.DateTimeFormat('zh-CN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(value));
   }
 
   private formatCell(value: JsonScalar | undefined): string {
@@ -459,6 +606,54 @@ export class VannaChat extends LitElement {
       pollEndpoint: this.pollEndpoint,
       customHeaders: this.customHeaders,
     });
+  }
+
+  private handleUserIdChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const nextUserId = input.value.trim();
+    if (!isCanonicalUserId(nextUserId)) {
+      input.value = this.userId;
+      this.appendError(new VannaApiError('XPD User ID must be a canonical uint64 value.'));
+      return;
+    }
+    if (nextUserId === this.userId) return;
+    this.userId = nextUserId;
+    this.writeLocalUserId(nextUserId);
+    this.clearMessages();
+    void this.requestStarter();
+  }
+
+  private resolveLocalUserId(configured: string): string {
+    if (isCanonicalUserId(configured)) {
+      this.writeLocalUserId(configured);
+      return configured;
+    }
+    try {
+      const stored = globalThis.localStorage?.getItem(VannaChat.localUserStorageKey) ?? '';
+      if (isCanonicalUserId(stored)) return stored;
+    } catch {
+      // Storage may be unavailable in sandboxed embeds.
+    }
+    const generated = this.generateLocalUserId();
+    this.writeLocalUserId(generated);
+    return generated;
+  }
+
+  private writeLocalUserId(value: string): void {
+    try {
+      globalThis.localStorage?.setItem(VannaChat.localUserStorageKey, value);
+    } catch {
+      // The in-memory property remains usable when storage is unavailable.
+    }
+  }
+
+  private generateLocalUserId(): string {
+    if (globalThis.crypto?.getRandomValues) {
+      const words = globalThis.crypto.getRandomValues(new Uint32Array(2));
+      const value = (BigInt(words[0]) << 32n) | BigInt(words[1]);
+      return value.toString();
+    }
+    return String(Math.max(1, Date.now()));
   }
 
   private handleSubmit(event: SubmitEvent): void {

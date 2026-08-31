@@ -2,7 +2,6 @@
 HTML templates for Vanna Agents servers.
 """
 
-from html import escape
 from typing import Optional
 
 
@@ -31,7 +30,6 @@ def get_index_html(
     static_path: str = "/static",
     cdn_url: Optional[str] = None,
     api_base_url: str = "",
-    logged_in_email: Optional[str] = None,
 ) -> str:
     """Generate index HTML with configurable component loading.
 
@@ -40,15 +38,11 @@ def get_index_html(
         static_path: Path to static assets in dev mode
         cdn_url: Optional explicit CDN override for the components
         api_base_url: Base URL for API endpoints
-        logged_in_email: Validated local demo identity selected by the server
 
     Returns:
         Complete HTML page as string
     """
     component_script = get_vanna_component_script(dev_mode, static_path, cdn_url)
-    safe_email = escape(logged_in_email or "", quote=True)
-    login_hidden = " hidden" if logged_in_email else ""
-    authenticated_hidden = "" if logged_in_email else " hidden"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -149,52 +143,13 @@ def get_index_html(
 
         {('    <div class="bg-vanna-orange/10 border border-vanna-orange/30 rounded-lg p-3 mb-5 text-vanna-orange text-sm font-medium">📦 Development Mode: Loading components from local assets</div>' if dev_mode else "")}
 
-        <!-- Login Form -->
-        <div id="loginContainer" class="max-w-md mx-auto mb-10 bg-white p-8 rounded-xl shadow-lg border border-vanna-teal/30{login_hidden}">
-            <div class="text-center mb-6">
-                <h2 class="text-2xl font-semibold text-vanna-navy mb-2 font-serif">Login to Continue</h2>
-                <p class="text-sm text-slate-600">Select your email to access the chat</p>
-            </div>
-
-            <form id="loginForm" method="post" action="/login">
-            <div class="mb-5">
-                <label for="emailInput" class="block mb-2 text-sm font-medium text-vanna-navy">Email Address</label>
-                <select
-                    id="emailInput"
-                    name="email"
-                    required
-                    class="w-full px-4 py-3 text-sm border border-vanna-teal/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-vanna-teal focus:border-transparent bg-white"
-                >
-                    <option value="">Select an email...</option>
-                    <option value="admin@example.com">admin@example.com</option>
-                    <option value="user@example.com">user@example.com</option>
-                </select>
-            </div>
-
-            <button type="submit" id="loginButton" class="w-full px-4 py-3 bg-vanna-teal text-white text-sm font-medium rounded-lg hover:bg-vanna-navy focus:outline-none focus:ring-2 focus:ring-vanna-teal focus:ring-offset-2 transition disabled:bg-gray-400 disabled:cursor-not-allowed">
-                Continue
-            </button>
-            </form>
-
-            <div class="mt-5 p-3 bg-vanna-teal/10 border-l-4 border-vanna-teal rounded text-xs text-vanna-navy leading-relaxed">
-                <strong>Local Demo Mode:</strong> The server validates this local role and stores it in a cookie.
-                This is not production authentication.
-            </div>
+        <div class="mb-5 p-3 bg-vanna-teal/10 border-l-4 border-vanna-teal rounded text-xs text-vanna-navy leading-relaxed">
+            <strong>Local Demo Mode:</strong> The chat keeps a numeric XPD user ID in local storage.
+            This trusted header identifies local data ownership; it is not production authentication.
         </div>
 
-        <!-- Logged In Status (hidden by default) -->
-        <div id="loggedInStatus" class="{authenticated_hidden} text-center p-4 bg-vanna-teal/10 border border-vanna-teal/30 rounded-lg mb-5">
-            Logged in as <span id="loggedInEmail" class="font-semibold text-vanna-navy">{safe_email}</span>
-            <br>
-            <form method="post" action="/logout" class="inline">
-            <button type="submit" id="logoutButton" class="mt-2 px-3 py-1.5 bg-vanna-navy text-white text-xs rounded hover:bg-vanna-teal transition">
-                Logout
-            </button>
-            </form>
-        </div>
-
-        <!-- Chat Container (hidden by default) -->
-        <div id="chatSections" class="{authenticated_hidden}">
+        <!-- Chat Container -->
+        <div id="chatSections">
             <div class="bg-white rounded-xl shadow-lg h-[600px] overflow-hidden border border-vanna-teal/30">
                 <vanna-chat
                     api-base="{api_base_url}"

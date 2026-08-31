@@ -14,15 +14,23 @@ class SaveQuestionToolArgsParams(BaseModel):
     """Parameters for saving question-tool-argument combinations."""
 
     question: str = Field(description="The original question that was asked")
-    tool_name: str = Field(description="The name of the tool that was used successfully")
-    args: Dict[str, Any] = Field(description="The arguments that were passed to the tool")
+    tool_name: str = Field(
+        description="The name of the tool that was used successfully"
+    )
+    args: Dict[str, Any] = Field(
+        description="The arguments that were passed to the tool"
+    )
 
 
 class SearchSavedCorrectToolUsesParams(BaseModel):
     """Parameters for searching saved tool usage patterns."""
 
-    question: str = Field(description="The question to find similar tool usage patterns for")
-    limit: Optional[int] = Field(default=10, description="Maximum number of results to return")
+    question: str = Field(
+        description="The question to find similar tool usage patterns for"
+    )
+    limit: Optional[int] = Field(
+        default=10, description="Maximum number of results to return"
+    )
     similarity_threshold: Optional[float] = Field(
         default=0.7, description="Minimum similarity score for results (0.0-1.0)"
     )
@@ -46,12 +54,16 @@ class SaveQuestionToolArgsTool(Tool[SaveQuestionToolArgsParams]):
 
     @property
     def description(self) -> str:
-        return "Save a successful question-tool-argument combination for future reference"
+        return (
+            "Save a successful question-tool-argument combination for future reference"
+        )
 
     def get_args_schema(self) -> Type[SaveQuestionToolArgsParams]:
         return SaveQuestionToolArgsParams
 
-    async def execute(self, context: ToolContext, args: SaveQuestionToolArgsParams) -> ToolResult:
+    async def execute(
+        self, context: ToolContext, args: SaveQuestionToolArgsParams
+    ) -> ToolResult:
         try:
             await context.agent_memory.save_tool_usage(
                 question=args.question,
@@ -131,7 +143,9 @@ class SaveTextMemoryTool(Tool[SaveTextMemoryParams]):
     def get_args_schema(self) -> Type[SaveTextMemoryParams]:
         return SaveTextMemoryParams
 
-    async def execute(self, context: ToolContext, args: SaveTextMemoryParams) -> ToolResult:
+    async def execute(
+        self, context: ToolContext, args: SaveTextMemoryParams
+    ) -> ToolResult:
         try:
             memory = await context.agent_memory.save_text_memory(
                 content=args.content, context=context
@@ -149,6 +163,6 @@ def _error_result(prefix: str, exc: Exception) -> ToolResult:
     return ToolResult(
         success=False,
         result_for_llm=message,
-        component=None,
+        components=[],
         error=str(exc),
     )

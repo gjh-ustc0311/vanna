@@ -31,6 +31,24 @@ history:
   enabled: true
 """
 
+OSS_PROFILE = (
+    VALID_PROFILE
+    + """\
+oss:
+  enabled: true
+  endpoint: https://oss.example.test
+  region: cn-test-1
+  bucket: test-bucket
+  prefix: private/local/query-files
+  access_key_id: oss-access-id
+  access_key_secret: oss-access-secret
+  security_token: oss-token
+oss_access:
+  provider: oss_presign
+  url_ttl_seconds: 86400
+"""
+)
+
 
 def test_loader_keeps_only_approved_profile_fields_and_masks_secrets(tmp_path):
     path = tmp_path / "app-local.yaml"
@@ -45,6 +63,39 @@ def test_loader_keeps_only_approved_profile_fields_and_masks_secrets(tmp_path):
     assert not hasattr(settings, "history")
     assert "top-secret" not in repr(settings)
     assert settings.database.password.get_secret_value() == "top-secret-db-key"
+    assert settings.oss.enabled is False
+    assert settings.oss_access.provider == "oss_presign"
+
+
+def test_loader_retains_strict_oss_settings_and_masks_credentials(tmp_path):
+    path = tmp_path / "app-local.yaml"
+    path.write_text(OSS_PROFILE, encoding="utf-8")
+    os.chmod(path, 0o600)
+
+    settings = load_xpd_profile(path)
+
+    assert settings.oss.enabled is True
+    assert settings.oss.endpoint == "https://oss.example.test"
+    assert settings.oss.prefix == "private/local/query-files"
+    assert settings.oss_access.url_ttl_seconds == 86_400
+    assert settings.oss.access_key_secret.get_secret_value() == "oss-access-secret"
+    assert "oss-access-secret" not in repr(settings)
+
+
+@pytest.mark.parametrize(
+    "yaml_text",
+    [
+        VALID_PROFILE + "\noss:\n  enabled: true\n",
+        OSS_PROFILE.replace("https://oss.example.test", "http://oss.example.test"),
+        OSS_PROFILE.replace("provider: oss_presign", "provider: main_cdn"),
+        OSS_PROFILE.replace("prefix: private/local/query-files", "prefix: ../files"),
+    ],
+)
+def test_loader_rejects_incomplete_or_unsafe_oss_settings(tmp_path, yaml_text):
+    path = tmp_path / "bad.yaml"
+    path.write_text(yaml_text, encoding="utf-8")
+    with pytest.raises(XpdConfigError):
+        load_xpd_profile(path)
 
 
 @pytest.mark.parametrize(

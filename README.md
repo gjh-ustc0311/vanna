@@ -55,12 +55,18 @@ The XPD adapter:
 - requires a same-turn Schema search before SQL execution;
 - accepts only guarded single-statement MySQL `SELECT` queries;
 - uses a read-only transaction, server-side timeout, and bounded results;
+- previews at most 30 rows, gives the model at most 100 rows/64 KiB, and exports
+  at most 20,000 rows to XLSX when a result exceeds 30 rows;
+- stores owner-scoped result files under `datas/files` for seven days and optionally
+  distributes them through private OSS presigned URLs;
+- scopes users by a trusted, canonical numeric `X-User-Id` request header;
 - limits the service to loopback addresses;
 - stores local conversation history under `datas/history_storage`;
 - writes XPD chat traffic to the configured rotating local log without logging
   profile secrets.
 
-See the [XPD architecture](docs/archs/support-xpd-tables-001.md) and
+See the [XPD request-header architecture](docs/archs/support-xpd-tables-006.md),
+[XPD file architecture](docs/archs/support-xpd-tables-005.md), and
 [3.0 support-surface architecture](docs/archs/support-xpd-tables-003.md) for the
 detailed boundaries.
 
@@ -86,7 +92,7 @@ python -m pip install 'vanna[anthropic]'
 integration dependencies; server and development dependencies remain separate.
 
 The public component protocol is intentionally limited to `TextComponent`,
-`DataFrameComponent`, and `LinkComponent`. Components are flat payloads; there is no
+`DataFrameComponent`, and `FileComponent`. Components are flat payloads; there is no
 Rich/Simple wrapper, lifecycle tree, chart renderer, task UI, notification, or log UI.
 
 ## HTTP API
@@ -95,12 +101,16 @@ The FastAPI server exposes:
 
 | Route | Purpose |
 | --- | --- |
-| `GET /` | Local login state and WebComponent page |
-| `POST /login` | Select a local demo identity |
-| `POST /logout` | Clear the local identity cookie |
+| `GET /` | Local WebComponent page with a browser-local numeric user ID |
 | `POST /api/vanna/v3/chat_sse` | Stream transient progress and append-only results |
 | `POST /api/vanna/v3/chat_poll` | Polling fallback using the same component contract |
+| `GET /api/vanna/v3/files/{file_id}` | Owner-scoped XPD download when OSS delivery is disabled |
 | `GET /health` | Health check |
+
+Both chat endpoints require `X-Request-Id` and `X-User-Id`; `X-Trace-Id` is optional
+and defaults to the request ID. Correlation IDs are returned in response headers.
+`X-User-Id` is a canonical decimal uint64 in the inclusive range
+`0..18446744073709551615`. The JSON body no longer accepts `request_id`.
 
 There is no Flask, Legacy `/api/v0/*`, or WebSocket chat endpoint. See the
 [API overview](docs/api/README.md) and [SSE contract](docs/api/chat_sse.md).
@@ -140,6 +150,11 @@ python scripts/verify_distribution.py /tmp/vanna-build
 - Google/Gemini support is not included.
 - Rich/Simple components and the V2 chat protocol were replaced by the three-type,
   append-only component contract and V3 chat endpoints.
+- `LinkComponent` was replaced by strict `FileComponent`, and `ToolResult.component`
+  was replaced by ordered `ToolResult.components`.
+- V3 chat correlation moved from JSON `request_id` to `X-Request-Id`; the trusted
+  canonical uint64 `X-User-Id` header replaced the local email Cookie identity
+  selector.
 - The `vanna` command now requires `--xpd-config` and only starts the local XPD mode.
 
 Downstream applications using removed APIs must migrate directly to the current Agent,

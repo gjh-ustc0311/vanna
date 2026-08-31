@@ -1,0 +1,71 @@
+schema_version: 4
+profile: local
+
+app:
+  host: 127.0.0.1
+  port: 8080
+  reload: false
+
+prometheus:
+  enabled: false
+  host: 127.0.0.1
+  port: 19000
+  path: /monitor/prometheus
+
+launcher:
+  startup_timeout_seconds: 60
+
+agent:
+  max_concurrency: 3
+  tool_workers: 4
+
+model:
+  name: qwen3.8-max-preview
+  base_url: https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+  api_key: sk-sp-H.PPERI.UOb7.MEUCIFpNZOMIrpzXolDnBZHHSvQXPivX_kZmDwnkzB7WPAzbAiEAu4JZGLWtTuLYg5CVbYx55nx0oWbYBMTNoJCnt8WUF9U
+  request_timeout_seconds: 120.0
+
+query:
+  total_timeout_seconds: 140.0
+  cleanup_grace_seconds: 60.0
+  max_rows: 50000
+  explain_max_scan_rows: 2000000
+
+database:
+  host: 127.0.0.1
+  port: 3306
+  name: test_db
+  username: root
+  password: gjh123456
+  read_max_attempts: 2
+  retry_backoff_ms: 100.0
+  query_timeout_ms: 32000
+
+history:
+  enabled: true
+
+identity:
+  signing_secret: a30f5a2092570ef7cea4ed32bc33370ffa4a38c8edbb4e7eb708f9dcaee990bb
+
+
+storage:
+  path: data/query-context
+
+oss:
+  enabled: true
+  endpoint: https://oss-cn-beijing.aliyuncs.com
+  region: cn-beijing
+  bucket: starpartner-biz
+  prefix: public/local/agent-report-files
+  access_key_id: LTAI5t5aRjcuDnr5G4TVua9c
+  access_key_secret: UTmeFwHatPL810ChvHP6MQBVdUG2mn
+  security_token: null
+oss_access:
+  provider: oss_presign
+  url_ttl_seconds: 86400
+
+readiness:
+  cache_ttl_seconds: 5.0
+  total_timeout_seconds: 4.0
+  connect_timeout_seconds: 2.0
+  read_timeout_seconds: 2.0

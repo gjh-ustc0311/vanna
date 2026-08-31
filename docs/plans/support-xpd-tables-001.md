@@ -3,6 +3,7 @@
 > 本文记录 001 期实施基线；服务传输层已由
 > [002 精简方案](./support-xpd-tables-002.md) 取代。
 > 当前包支持面和 CLI 契约以 [003 支持面精简](./support-xpd-tables-003.md) 为准。
+> 大结果集、XLSX 与文件交付实施以 [005 计划](./support-xpd-tables-005.md) 为准。
 > 后续变更已为 XPD 增加 `datas/history_storage` 本地会话存储；下文“不持久化会话”仅描述 001 期原始边界。
 
 ## 1. 实施原则

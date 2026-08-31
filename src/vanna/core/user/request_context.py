@@ -19,8 +19,7 @@ class RequestContext(BaseModel):
 
     Example:
         context = RequestContext(
-            cookies={'vanna_email': 'alice@example.com'},
-            headers={'Authorization': 'Bearer token'},
+            headers={'X-User-Id': '123'},
             remote_addr='127.0.0.1'
         )
         user = await resolver.resolve_user(context)
@@ -38,6 +37,18 @@ class RequestContext(BaseModel):
 
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional framework-specific metadata"
+    )
+
+    request_id: Optional[str] = Field(
+        default=None, description="Transport-validated request identifier"
+    )
+
+    trace_id: Optional[str] = Field(
+        default=None, description="Transport-validated HTTP trace identifier"
+    )
+
+    user_id: Optional[str] = Field(
+        default=None, description="Transport-validated caller user identifier"
     )
 
     def get_cookie(self, name: str, default: Optional[str] = None) -> Optional[str]:

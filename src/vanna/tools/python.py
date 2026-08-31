@@ -183,7 +183,7 @@ def _result_from_command(
     return ToolResult(
         success=success,
         result_for_llm=f"{summary}\n\n{content}",
-        component=None,
+        components=[],
         error=None if success else content,
     )
 
@@ -192,6 +192,6 @@ def _error_result(message: str) -> ToolResult:
     return ToolResult(
         success=False,
         result_for_llm=message,
-        component=None,
+        components=[],
         error=message,
     )

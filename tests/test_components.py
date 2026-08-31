@@ -1,9 +1,11 @@
 """Boundary tests for the public three-component contract."""
 
+from datetime import datetime, timezone
+
 import pytest
 from pydantic import ValidationError
 
-from vanna.components import DataFrameComponent, LinkComponent, TextComponent
+from vanna.components import DataFrameComponent, FileComponent, TextComponent
 from vanna.core.agent import AgentConfig, ProgressUpdate
 from vanna.core.tool import ToolResult
 from vanna.servers.base import (
@@ -46,38 +48,102 @@ def test_dataframe_from_records_is_bounded_to_100_rows():
     "url",
     ["/reports/1", "reports/1", "https://example.com/report", "http://localhost/x"],
 )
-def test_link_accepts_relative_and_http_urls(url):
-    assert LinkComponent(url=url).url == url
+def test_file_accepts_relative_and_http_urls(url):
+    component = FileComponent(
+        name="report.xlsx",
+        url=url,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        size_bytes=12,
+        row_count=3,
+        truncated=False,
+        expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    assert component.url == url
 
 
 @pytest.mark.parametrize(
     "url", ["", "//example.com/path", "javascript:alert(1)", "data:text/html,x"]
 )
-def test_link_rejects_unsafe_urls(url):
+def test_file_rejects_unsafe_urls(url):
     with pytest.raises(ValidationError):
-        LinkComponent(url=url)
+        FileComponent(
+            name="report.xlsx",
+            url=url,
+            media_type="application/octet-stream",
+            size_bytes=1,
+            row_count=1,
+            truncated=False,
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+
+
+@pytest.mark.parametrize("name", ["../report.xlsx", "report\\name.xlsx", "bad\nname"])
+def test_file_rejects_unsafe_names(name):
+    with pytest.raises(ValidationError):
+        FileComponent(
+            name=name,
+            url="/report",
+            media_type="application/octet-stream",
+            size_bytes=1,
+            row_count=1,
+            truncated=False,
+            expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+
+
+@pytest.mark.parametrize(
+    ("size_bytes", "expires_at"),
+    [
+        (-1, datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        (1, datetime(2026, 1, 1)),
+    ],
+)
+def test_file_requires_nonnegative_sizes_and_timezone_aware_expiry(
+    size_bytes, expires_at
+):
+    with pytest.raises(ValidationError):
+        FileComponent(
+            name="report.xlsx",
+            url="/report",
+            media_type="application/octet-stream",
+            size_bytes=size_bytes,
+            row_count=1,
+            truncated=False,
+            expires_at=expires_at,
+        )
 
 
 def test_tool_result_parses_only_supported_discriminated_components():
     result = ToolResult(
         success=True,
         result_for_llm="ok",
-        component={"type": "link", "url": "/report"},  # type: ignore[arg-type]
+        components=[
+            {
+                "type": "file",
+                "name": "report.xlsx",
+                "url": "/report",
+                "media_type": "application/octet-stream",
+                "size_bytes": 1,
+                "row_count": 1,
+                "truncated": False,
+                "expires_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            }
+        ],  # type: ignore[list-item]
     )
-    assert isinstance(result.component, LinkComponent)
+    assert isinstance(result.components[0], FileComponent)
 
     with pytest.raises(ValidationError):
         ToolResult(
             success=True,
             result_for_llm="bad",
-            component={"type": "chart", "data": {}},  # type: ignore[arg-type]
+            components=[{"type": "chart", "data": {}}],  # type: ignore[list-item]
         )
 
     with pytest.raises(ValidationError):
         ToolResult(
             success=True,
             result_for_llm="old",
-            ui_component=None,  # type: ignore[call-arg]
+            component=None,  # type: ignore[call-arg]
         )
 
 

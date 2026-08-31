@@ -2,6 +2,7 @@
 
 > 历史需求：组件范围已由 [004 精简组件 PRD](./support-xpd-tables-004.md)
 > 取代。
+> Cookie 身份与请求关联已由 [006 Header PRD](./support-xpd-tables-006.md) 取代。
 
 ## 1. 背景与目标
 

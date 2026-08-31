@@ -158,9 +158,7 @@ class AuditLogger(ABC):
                 if result.result_for_llm
                 else 0
             ),
-            component_type=(
-                result.component.type if result.component is not None else None
-            ),
+            component_types=[component.type for component in result.components],
         )
         await self.log_event(event)
 

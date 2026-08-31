@@ -1,5 +1,7 @@
 # 实施计划: 三组件与 V3 Chat 协议
 
+> File 组件与多组件 ToolResult 的实施以 [005 计划](./support-xpd-tables-005.md) 为准。
+
 ## 1. 协议收敛
 
 - 新建 `Component` 判别联合：`TextComponent | DataFrameComponent |

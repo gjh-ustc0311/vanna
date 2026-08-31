@@ -46,7 +46,7 @@ async def test_search_result_is_for_llm_only():
     )
 
     assert result.success
-    assert result.component is None
+    assert result.components == []
     assert "run_sql" in result.result_for_llm
     assert "SELECT SUM(total)" in result.result_for_llm
 
@@ -62,8 +62,8 @@ async def test_search_has_no_admin_ui_variant():
     user_result = await SearchSavedCorrectToolUsesTool().execute(user_context, params)
 
     assert admin_result.result_for_llm == user_result.result_for_llm
-    assert admin_result.component is None
-    assert user_result.component is None
+    assert admin_result.components == []
+    assert user_result.components == []
 
 
 @pytest.mark.asyncio
@@ -76,7 +76,8 @@ async def test_save_tool_usage_has_no_ui_component():
         ),
     )
     assert result.success
-    assert result.component is None
+    assert result.components == []
+
 
 @pytest.mark.asyncio
 async def test_save_text_memory_has_no_ui_component():
@@ -85,4 +86,4 @@ async def test_save_text_memory_has_no_ui_component():
         make_context(memory), SaveTextMemoryParams(content="remember this")
     )
     assert result.success
-    assert result.component is None
+    assert result.components == []

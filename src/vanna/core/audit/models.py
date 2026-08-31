@@ -6,7 +6,7 @@ This module contains data models for audit logging events.
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -62,9 +62,7 @@ class AuditEvent(BaseModel):
 class ToolAccessCheckEvent(AuditEvent):
     """Audit event for tool access permission checks."""
 
-    event_type: AuditEventType = cast(
-        AuditEventType, AuditEventType.TOOL_ACCESS_CHECK
-    )
+    event_type: AuditEventType = AuditEventType.TOOL_ACCESS_CHECK
     tool_name: str
     access_granted: bool
     required_groups: List[str] = Field(default_factory=list)
@@ -74,7 +72,7 @@ class ToolAccessCheckEvent(AuditEvent):
 class ToolInvocationEvent(AuditEvent):
     """Audit event for actual tool executions."""
 
-    event_type: AuditEventType = cast(AuditEventType, AuditEventType.TOOL_INVOCATION)
+    event_type: AuditEventType = AuditEventType.TOOL_INVOCATION
     tool_call_id: str
     tool_name: str
 
@@ -86,7 +84,7 @@ class ToolInvocationEvent(AuditEvent):
 class ToolResultEvent(AuditEvent):
     """Audit event for tool execution results."""
 
-    event_type: AuditEventType = cast(AuditEventType, AuditEventType.TOOL_RESULT)
+    event_type: AuditEventType = AuditEventType.TOOL_RESULT
     tool_call_id: str
     tool_name: str
     success: bool
@@ -95,15 +93,13 @@ class ToolResultEvent(AuditEvent):
 
     # Result metadata (without full content for size)
     result_size_bytes: Optional[int] = None
-    component_type: Optional[str] = None
+    component_types: List[str] = Field(default_factory=list)
 
 
 class AiResponseEvent(AuditEvent):
     """Audit event for AI-generated responses."""
 
-    event_type: AuditEventType = cast(
-        AuditEventType, AuditEventType.AI_RESPONSE_GENERATED
-    )
+    event_type: AuditEventType = AuditEventType.AI_RESPONSE_GENERATED
 
     # Response metadata
     response_length_chars: int

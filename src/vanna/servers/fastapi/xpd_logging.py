@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from copy import deepcopy
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Optional, TextIO, Union
@@ -68,23 +69,48 @@ def log_xpd_chat_sse_event(
     request_id: str,
     message_type: str,
     payload: Any,
+    trace_id: str = "",
+    transport: str = "sse",
 ) -> None:
     """Write one complete XPD SSE boundary event as a JSON line."""
 
+    safe_payload = redact_xpd_file_url(payload)
     logger.info(
         json.dumps(
             {
                 "event": event,
                 "timestamp": time.time(),
-                "transport": "sse",
+                "transport": transport,
                 "path": path,
                 "conversation_id": conversation_id,
                 "request_id": request_id,
+                "trace_id": trace_id or request_id,
                 "message_type": message_type,
-                "payload": payload,
+                "payload": safe_payload,
             },
             ensure_ascii=False,
             separators=(",", ":"),
             default=str,
         )
     )
+
+
+def redact_xpd_file_url(payload: Any) -> Any:
+    """Copy one wire payload and redact structured File URLs at any envelope depth."""
+
+    if not isinstance(payload, (dict, list)):
+        return payload
+    safe_payload = deepcopy(payload)
+
+    def redact(value: Any) -> None:
+        if isinstance(value, dict):
+            if value.get("type") == "file" and "url" in value:
+                value["url"] = "<redacted>"
+            for nested in value.values():
+                redact(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                redact(nested)
+
+    redact(safe_payload)
+    return safe_payload

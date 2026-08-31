@@ -5,6 +5,8 @@ bundled client. They serialize directly onto the wire without a rich/simple
 wrapper or a second ``data`` envelope.
 """
 
+import re
+from datetime import datetime
 from typing import Annotated, Dict, List, Literal, Optional, Union
 from urllib.parse import urlsplit
 
@@ -65,12 +67,30 @@ class DataFrameComponent(_ComponentModel):
         )
 
 
-class LinkComponent(_ComponentModel):
-    """A safe relative or HTTP(S) link."""
+class FileComponent(_ComponentModel):
+    """A downloadable file rendered by clients as a file card."""
 
-    type: Literal["link"] = "link"
-    url: str
-    text: Optional[str] = None
+    type: Literal["file"] = "file"
+    name: str = Field(min_length=1, max_length=255)
+    url: str = Field(min_length=1, max_length=8192)
+    media_type: str = Field(min_length=3, max_length=255)
+    size_bytes: int = Field(ge=0)
+    row_count: int = Field(ge=0)
+    truncated: bool
+    expires_at: datetime
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if (
+            value != value.strip()
+            or any(char in value for char in {"/", "\\"})
+            or any(ord(char) < 32 or ord(char) == 127 for char in value)
+        ):
+            raise ValueError(
+                "file name must be trimmed and contain no control characters"
+            )
+        return value
 
     @field_validator("url")
     @classmethod
@@ -87,9 +107,23 @@ class LinkComponent(_ComponentModel):
             raise ValueError("protocol-relative URLs are not supported")
         return value
 
+    @field_validator("media_type")
+    @classmethod
+    def validate_media_type(cls, value: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+", value):
+            raise ValueError("media_type must be a valid MIME type")
+        return value.lower()
+
+    @field_validator("expires_at")
+    @classmethod
+    def validate_expires_at(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("expires_at must include a timezone")
+        return value
+
 
 Component = Annotated[
-    Union[TextComponent, DataFrameComponent, LinkComponent],
+    Union[TextComponent, DataFrameComponent, FileComponent],
     Field(discriminator="type"),
 ]
 
@@ -98,6 +132,6 @@ __all__ = [
     "Component",
     "DataFrameComponent",
     "JsonScalar",
-    "LinkComponent",
+    "FileComponent",
     "TextComponent",
 ]
