@@ -32,3 +32,4 @@ logs/*.log*
 # Runtime conversation history
 /datas/history_storage/
 /datas/files/
+/configs/
